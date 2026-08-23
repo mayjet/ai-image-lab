@@ -42,15 +42,11 @@ IMAGE_NAME=ai-image-lab:cuda CONTAINER_NAME=ai-image-lab-cuda JUPYTER_PORT=8888 
 `Dockerfile.l4t` はJetson向けです。
 PyTorchはL4Tベースイメージに含まれるものを使います。
 bitsandbytesとxformersは入れません。
-`BASE_IMAGE=nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.1-py3` の想定はJetPack 6系です。
+`BASE_IMAGE=nvcr.io/nvidia/pytorch:24.09-py3-igpu` の想定はJetPack 6系です。
 Pythonはベースイメージ側の `python3` を使います。r36/Ubuntu 22.04系なら通常Python 3.10系です。
 Jupyter Lab、Notebook、ipykernelは `requirements.txt` から入れ、ビルド時と起動時に `Python (ai-image-lab)` kernelを登録します。
 
-JetPackに合わない場合は `BASE_IMAGE` を変えてください。
-
-```bash
-BASE_IMAGE=nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.1-py3 bash ./docker/run_l4t.sh
-```
+JetPackに合わない場合は `Dockerfile.l4t` の `ARG BASE_IMAGE=...` を変更してください。
 
 ## Compose
 
