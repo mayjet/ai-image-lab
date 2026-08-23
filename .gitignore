@@ -1,0 +1,35 @@
+# Public repository: ignore everything by default.
+*
+
+# Keep only the portable project files.
+!/.gitignore
+!/prompt.md
+!/uvvenv.sh
+!/local_character_single.ipynb
+!/local_lora_train.ipynb
+!/docker/
+!/docker/**
+
+# Keep runtime/generated files ignored even if patterns change later.
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+ai-image-lab-work/
+dataset/
+datasets/
+chara/
+lora/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+output/
+outputs/
+logs/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp

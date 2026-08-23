@@ -1,0 +1,48 @@
+ARG BASE_IMAGE=nvcr.io/nvidia/l4t-pytorch:r36.2.0-pth2.1-py3
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/workspace/ai-image-lab-work/.cache/huggingface
+ENV XDG_CACHE_HOME=/workspace/ai-image-lab-work/.cache
+
+WORKDIR /tmp/build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        python3-pip \
+        python3-dev \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --upgrade pip setuptools wheel uv
+
+RUN python3 --version && \
+    python3 -c "import torch; print('torch', torch.__version__); print('cuda_available', torch.cuda.is_available())"
+
+COPY requirements.txt /tmp/build/requirements.txt
+RUN uv pip install --system -r /tmp/build/requirements.txt
+
+RUN python3 -m ipykernel install --sys-prefix --name ai-image-lab --display-name "Python (ai-image-lab)" && \
+    python3 -m jupyter kernelspec list && \
+    python3 -c "import jupyterlab, notebook, ipykernel; print('jupyter/ipykernel ready')"
+
+COPY entrypoint.sh /usr/local/bin/ai-image-lab-entrypoint
+RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint
+
+WORKDIR /workspace
+EXPOSE 8888
+
+ENTRYPOINT ["/usr/local/bin/ai-image-lab-entrypoint"]
+CMD ["python3", "-m", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password="]
