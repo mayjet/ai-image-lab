@@ -1,5 +1,7 @@
-ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:24.09-py3-igpu
-FROM ${BASE_IMAGE}
+# Jetson / L4T ベースイメージ(JetPack 6 / L4T r36 想定)。
+# PyTorch はこのベースイメージ同梱のものを使う。requirements.txt では torch を入れない。
+# 別 JetPack に合わせる場合はこの FROM を直接書き換える。
+FROM nvcr.io/nvidia/pytorch:24.12-py3-igpu
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_NO_CACHE_DIR=1
@@ -10,14 +12,13 @@ ENV XDG_CACHE_HOME=/workspace/ai-image-lab-work/.cache
 
 WORKDIR /tmp/build
 
+# python3-pip はベース同梱を使うため入れない。ソースビルド系依存は requirements.txt から
+# 除いてあるので build-essential / python3-dev も不要。wheel が無い依存を足す場合は戻す。
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         git \
-        python3-pip \
-        python3-dev \
-        build-essential \
         libgl1 \
         libglib2.0-0 \
         libsm6 \
@@ -32,17 +33,43 @@ RUN python3 --version && \
     python3 -c "import torch; print('torch', torch.__version__); print('cuda_available', torch.cuda.is_available())"
 
 COPY requirements.txt /tmp/build/requirements.txt
-RUN uv pip install --system -r /tmp/build/requirements.txt
+RUN uv pip install --system --break-system-packages -r /tmp/build/requirements.txt
+
+# dghs-imgutilsはtokenizers>=0.20を要求し、学習側transformers 4.44と競合する。
+# 顔検出を独立venvへ隔離してPyTorch学習環境を変更しない。
+COPY requirements-face.txt /tmp/build/requirements-face.txt
+RUN uv python install 3.10 && \
+    uv venv --python 3.10 /opt/face-detector && \
+    uv pip install --python /opt/face-detector/bin/python \
+        --index-url https://pypi.jetson-ai-lab.io/jp6/cu126 \
+        onnxruntime-gpu==1.24.0 && \
+    uv pip install --python /opt/face-detector/bin/python -r /tmp/build/requirements-face.txt
+COPY face_detect.py /opt/face-detector/face_detect.py
+RUN /opt/face-detector/bin/python -c "import numpy, onnxruntime, toml; from imgutils.detect import detect_faces; providers = onnxruntime.get_available_providers(); assert 'CUDAExecutionProvider' in providers; assert numpy.__version__ == '1.26.4'; print('face detector build ready', onnxruntime.__version__, providers)"
+
+# TensorBoardだけを後からforce-reinstallするとNumPy 2.xへ更新され、Jetson版torchの
+# NumPy 1.x ABIと衝突する。一括インストールした固定バージョンをここで検証する。
+RUN python3 -c "import numpy, tensorboard, torch; assert numpy.__version__ == '1.26.4'; assert torch.version.cuda is not None; print('torch', torch.__version__, 'torch_cuda_build', torch.version.cuda, 'numpy', numpy.__version__, 'tensorboard', tensorboard.__version__)" && \
+    python3 -m tensorboard.main --version
 
 RUN python3 -m ipykernel install --sys-prefix --name ai-image-lab --display-name "Python (ai-image-lab)" && \
     python3 -m jupyter kernelspec list && \
     python3 -c "import jupyterlab, notebook, ipykernel; print('jupyter/ipykernel ready')"
 
+COPY sitecustomize.py /usr/local/lib/python3.12/dist-packages/jetson_torch_compat.py
+COPY jetson_torch_compat.pth /usr/local/lib/python3.12/dist-packages/jetson_torch_compat.pth
+RUN python3 -c "import torch; assert hasattr(torch.distributed, 'is_initialized'); print('Jetson torch.distributed compatibility ready')"
+
 COPY entrypoint.sh /usr/local/bin/ai-image-lab-entrypoint
-RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint
+COPY check_l4t_environment.sh /usr/local/bin/check-l4t-environment
+RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint /usr/local/bin/check-l4t-environment
 
 WORKDIR /workspace
-EXPOSE 8888
+EXPOSE 8888 6006
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8888/api/status >/dev/null && \
+        curl -fsS http://127.0.0.1:6006/ >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/ai-image-lab-entrypoint"]
 CMD ["python3", "-m", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password="]

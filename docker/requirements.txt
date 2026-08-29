@@ -1,9 +1,11 @@
+setuptools==80.9.0  # TensorBoard 2.18が利用するpkg_resourcesを含む最終系
+
 jupyterlab
 notebook
 ipykernel
 ipywidgets
 
-numpy
+numpy==1.26.4  # Jetson向けtorchはNumPy 1.x ABIでビルドされている
 pandas
 scipy
 scikit-learn
@@ -16,7 +18,7 @@ requests
 Pillow
 opencv-python-headless
 
-transformers==4.54.1
+transformers==4.44.0  # base の igpu torch は distributed 無効ビルドのため 4.44 系(sd-scripts 準拠)に固定
 diffusers[torch]==0.32.1
 accelerate==1.6.0
 huggingface-hub==0.34.3
@@ -25,13 +27,13 @@ datasets
 peft
 tokenizers
 sentencepiece
-protobuf
+protobuf>=3.20.3,<6
 
 imagesize
 ftfy
 einops
 voluptuous
-tensorboard
+tensorboard==2.18.0
 rich
 lion-pytorch
 schedulefree
@@ -41,7 +43,3 @@ prodigy-plus-schedule-free
 open-clip-torch
 
 controlnet_aux
-basicsr
-facexlib
-gfpgan
-git+https://github.com/xinntao/Real-ESRGAN.git

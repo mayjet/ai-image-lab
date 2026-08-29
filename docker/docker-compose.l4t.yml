@@ -7,6 +7,7 @@ services:
     container_name: ai-image-lab-l4t
     ports:
       - "${JUPYTER_PORT:-8888}:8888"
+      - "${TENSORBOARD_PORT:-6006}:6006"
     volumes:
       - ..:/workspace
     working_dir: /workspace
@@ -14,5 +15,9 @@ services:
     shm_size: "8gb"
     runtime: nvidia
     environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TENSORBOARD_LOGDIR=/workspace/ai-image-lab-work/output/folder_lora_train/logs
+      - TENSORBOARD_PORT=6006
+      # Pass through only when it exists in the host environment.
+      - HF_TOKEN

@@ -1,15 +1,30 @@
 # prompt
 
+このファイルは公開用テンプレートです。通常は `./prompts/<任意の名前>.md` へコピーして編集し、
+Notebookの `PROMPT_MD_PATH` をそのファイルへ変更してください。`./prompts/` の内容はGit管理されません。
+
 ## settings
 character: <character-folder-name>
 aspect: portrait_3_4
+# JetsonでControlNetを使う場合は64の倍数を推奨
+width: 384
+height: 512
 
 ## references
-source_image: ./<dataset>/<character>/portrait/<image>.png
-identity: ./<dataset>/<character>/portrait/<image>.png
-pose: ./<dataset>/<character>/game/<image>.png
-costume: ./<dataset>/<character>/game/<image>.png
-style: ./<dataset>/<character>/illust
+source_image: ./dataset/<character-folder-name>/portrait/<image>.png
+identity: ./dataset/<character-folder-name>/portrait/<image>.png
+pose: ./dataset/<character-folder-name>/game/<image>.png
+costume: ./dataset/<character-folder-name>/game/<image>.png
+style: ./dataset/<character-folder-name>/illust
+
+## lora
+# 必要なroleだけをカンマ区切りで指定する。
+use_roles: base, style
+# 現在のフォルダ別学習重みをNotebookのroleへ明示的に割り当てる。
+base: ./dataset/<character-folder-name>/folder_loras/<character-folder-name>-anime.safetensors
+style: ./dataset/<character-folder-name>/folder_loras/<character-folder-name>-illust.safetensors
+base_weight: 1.00
+style_weight: 0.25
 
 ## generation_preferences
 最終画像で優先したい画風を指定する。

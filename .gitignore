@@ -7,6 +7,9 @@
 !/uvvenv.sh
 !/local_character_single.ipynb
 !/local_lora_train.ipynb
+!/train_lora.py
+!/validate_lora.py
+!/anime_face_collect.py
 !/docker/
 !/docker/**
 
@@ -17,6 +20,7 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 ai-image-lab-work/
+prompts/
 dataset/
 datasets/
 chara/
@@ -25,6 +29,7 @@ lora/
 *.ckpt
 *.pt
 *.pth
+!/docker/jetson_torch_compat.pth
 output/
 outputs/
 logs/
