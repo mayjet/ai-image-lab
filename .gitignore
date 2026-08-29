@@ -10,6 +10,9 @@
 !/train_lora.py
 !/validate_lora.py
 !/anime_face_collect.py
+!/README.md
+!/prompts/
+!/prompts/.gitkeep
 !/docker/
 !/docker/**
 
@@ -20,7 +23,8 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 ai-image-lab-work/
-prompts/
+prompts/*
+!prompts/.gitkeep
 dataset/
 datasets/
 chara/
