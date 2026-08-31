@@ -1,0 +1,48 @@
+# FLUX.2 development/smoke-test environment for JetPack 6 / L4T r36.
+# This image deliberately does not promise FLUX.2 inference or LoRA training on
+# Jetson.  Keep PyTorch from NVIDIA's iGPU image; never replace it with a PyPI
+# wheel, because that would lose the Jetson CUDA build.
+ARG L4T_PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:24.12-py3-igpu
+FROM ${L4T_PYTORCH_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV AI_IMAGE_BACKEND=flux2
+ENV AI_IMAGE_PLATFORM=l4t
+ENV AI_IMAGE_EXPERIMENTAL=1
+ENV AI_IMAGE_CAPABILITY=environment-only
+ENV DIFFUSERS_REF=v0.40.0
+ENV HF_HOME=/workspace/cache/huggingface
+ENV XDG_CACHE_HOME=/workspace/cache
+
+WORKDIR /tmp/build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git libgl1 libglib2.0-0 ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+RUN python3 -m pip install --upgrade pip setuptools wheel uv
+
+COPY docker/requirements.txt /tmp/build/requirements.txt
+RUN uv pip install --system --break-system-packages -r /tmp/build/requirements.txt
+# Do not use the `diffusers[torch]` extra on Jetson.  It may replace NVIDIA's
+# matched torch/torchvision builds with incompatible PyPI aarch64 wheels.
+RUN uv pip install --system --break-system-packages \
+    "diffusers>=0.40.0,<0.41" \
+    "transformers==5.0.0" \
+    "accelerate>=1.10,<2" \
+    "peft>=0.17,<1" \
+    "huggingface-hub>=1.23,<2"
+COPY shared/compat/jetson_torch_compat.py /usr/local/lib/python3.12/dist-packages/jetson_torch_compat.py
+COPY shared/compat/jetson_torch_compat.pth /usr/local/lib/python3.12/dist-packages/jetson_torch_compat.pth
+RUN python3 -c "import torch, torchvision; print('NVIDIA torch stack', torch.__version__, torchvision.__version__)"
+RUN python3 -c "from diffusers import Flux2KleinPipeline; import torch, transformers; print('FLUX.2 L4T import ready', torch.__version__, transformers.__version__)"
+
+COPY docker/entrypoint.sh /usr/local/bin/ai-image-lab-entrypoint
+COPY docker/check_environment.sh /usr/local/bin/check-ai-image-environment
+RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint /usr/local/bin/check-ai-image-environment
+
+WORKDIR /workspace
+EXPOSE 8888 6006
+ENTRYPOINT ["/usr/local/bin/ai-image-lab-entrypoint"]
+CMD ["python3", "-m", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password="]

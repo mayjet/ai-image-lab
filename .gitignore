@@ -3,14 +3,16 @@
 
 # Keep only the portable project files.
 !/.gitignore
+!/.dockerignore
 !/prompt.md
 !/uvvenv.sh
-!/local_character_single.ipynb
-!/local_lora_train.ipynb
-!/train_lora.py
-!/validate_lora.py
-!/anime_face_collect.py
 !/README.md
+!/sd15/
+!/sd15/**
+!/flux2/
+!/flux2/**
+!/shared/
+!/shared/**
 !/prompts/
 !/prompts/.gitkeep
 !/docker/
@@ -23,6 +25,10 @@ __pycache__/
 .venv/
 .ipynb_checkpoints/
 ai-image-lab-work/
+cache/
+models/
+outputs/
+vendor/
 prompts/*
 !prompts/.gitkeep
 dataset/
@@ -33,7 +39,7 @@ lora/
 *.ckpt
 *.pt
 *.pth
-!/docker/jetson_torch_compat.pth
+!/shared/compat/jetson_torch_compat.pth
 output/
 outputs/
 logs/

@@ -11,18 +11,18 @@ width: 384
 height: 512
 
 ## references
-source_image: ./dataset/<character-folder-name>/portrait/<image>.png
-identity: ./dataset/<character-folder-name>/portrait/<image>.png
-pose: ./dataset/<character-folder-name>/game/<image>.png
-costume: ./dataset/<character-folder-name>/game/<image>.png
-style: ./dataset/<character-folder-name>/illust
+source_image: ./datasets/<works-name>/<character-folder-name>/portrait/<image>.png
+identity: ./datasets/<works-name>/<character-folder-name>/portrait/<image>.png
+pose: ./datasets/<works-name>/<character-folder-name>/game/<image>.png
+costume: ./datasets/<works-name>/<character-folder-name>/game/<image>.png
+style: ./datasets/<works-name>/<character-folder-name>/illust
 
 ## lora
 # 必要なroleだけをカンマ区切りで指定する。
 use_roles: base, style
 # 現在のフォルダ別学習重みをNotebookのroleへ明示的に割り当てる。
-base: ./dataset/<character-folder-name>/folder_loras/<character-folder-name>-anime.safetensors
-style: ./dataset/<character-folder-name>/folder_loras/<character-folder-name>-illust.safetensors
+base: ./models/sd15/<works-name>/<character-folder-name>/anime.safetensors
+style: ./models/sd15/<works-name>/<character-folder-name>/illust.safetensors
 base_weight: 1.00
 style_weight: 0.25
 

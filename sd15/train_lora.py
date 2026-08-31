@@ -1,4 +1,4 @@
-"""Jetson Orin Nano向け、フォルダ単位のキャラクターLoRA学習。
+"""SD1.5向け、フォルダ単位のキャラクターLoRA学習。
 
 character.tomlを正本として共通captionを生成し、準備済みfaceを含めて学習する。
 """
@@ -17,7 +17,14 @@ from pathlib import Path
 
 import toml
 
-DATASET_ROOT = Path("./dataset")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from shared.paths import default_dataset_root, sd15_model_root, sd15_output_root, sd_scripts_root
+
+DATASET_ROOT = default_dataset_root()
+MODEL_ROOT = sd15_model_root()
 MODEL_ID = "stablediffusionapi/counterfeit-v30"
 IS_SDXL = False
 TRAIN_FOLDERS = ["lora", "portrait", "anime", "game", "illust", "face"]
@@ -35,9 +42,8 @@ SAVE_EVERY_N_STEPS = 300
 USE_8BIT_ADAM = False
 LOG_WITH = "tensorboard"
 
-WORK_DIR = Path("ai-image-lab-work")
-SD_SCRIPTS_DIR = WORK_DIR / "sd-scripts"
-OUTPUT_DIR = WORK_DIR / "output" / "folder_lora_train"
+SD_SCRIPTS_DIR = sd_scripts_root()
+OUTPUT_DIR = sd15_output_root() / "training"
 RUNTIME_DATASET_DIR = OUTPUT_DIR / "runtime_datasets"
 
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -356,11 +362,11 @@ def train_one(character_dir: Path, folder_name: str, force: bool = False, dry_ru
     images = list_images(character_dir / folder_name)
     if not images:
         return True
-    output_dir = character_dir / "folder_loras"
+    output_dir = MODEL_ROOT / DATASET_ROOT.name / character_dir.name
     output_dir.mkdir(parents=True, exist_ok=True)
     name = f"{character_dir.name}-{folder_name}"
-    output = output_dir / f"{name}.safetensors"
-    metadata_path = output_dir / f"{name}.train.json"
+    output = output_dir / f"{folder_name}.safetensors"
+    metadata_path = output_dir / f"{folder_name}.train.json"
     steps = train_steps(len(images))
     fingerprint = training_fingerprint(character_dir, folder_name, steps)
     old_metadata = {}
@@ -384,7 +390,7 @@ def train_one(character_dir: Path, folder_name: str, force: bool = False, dry_ru
         "--num_machines", "1", "--mixed_precision", "fp16", "--dynamo_backend", "no",
         "--num_cpu_threads_per_process", "1", str(SD_SCRIPTS_DIR / script),
         "--pretrained_model_name_or_path", MODEL_ID, "--dataset_config", str(config_path),
-        "--output_dir", str(output_dir), "--output_name", name, "--save_model_as", "safetensors",
+        "--output_dir", str(output_dir), "--output_name", folder_name, "--save_model_as", "safetensors",
         "--network_module", "networks.lora", "--network_dim", str(LORA_RANK),
         "--network_alpha", str(LORA_ALPHA), "--learning_rate", str(LEARNING_RATE),
         "--lr_scheduler", "cosine_with_restarts", "--max_train_steps", str(steps),
@@ -408,6 +414,10 @@ def train_one(character_dir: Path, folder_name: str, force: bool = False, dry_ru
         print(f"[{name}] cache_latentsなしで再試行")
         ok = attempt_train(no_cache, output, name, env)
     if ok:
+        checkpoint_dir = output_dir / "checkpoints"
+        for checkpoint in output_dir.glob(f"{folder_name}-step*.safetensors"):
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(checkpoint), checkpoint_dir / checkpoint.name)
         metadata = {
             "name": name,
             "fingerprint": fingerprint,
@@ -430,6 +440,9 @@ def train_one(character_dir: Path, folder_name: str, force: bool = False, dry_ru
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset-root", type=Path, default=DATASET_ROOT)
+    parser.add_argument("--model-root", type=Path, default=MODEL_ROOT)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--characters", nargs="*")
     parser.add_argument("--folders", nargs="*", choices=TRAIN_FOLDERS)
     parser.add_argument("--prepare", action="store_true", help="共通caption準備のみ")
@@ -441,7 +454,12 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    global DATASET_ROOT, MODEL_ROOT, OUTPUT_DIR, RUNTIME_DATASET_DIR
     args = parse_args()
+    DATASET_ROOT = args.dataset_root.expanduser().resolve()
+    MODEL_ROOT = args.model_root.expanduser().resolve()
+    OUTPUT_DIR = args.output_dir.expanduser().resolve()
+    RUNTIME_DATASET_DIR = OUTPUT_DIR / "runtime_datasets"
     if not (args.prepare or args.validate or args.train):
         raise RuntimeError("実行内容を指定してください: --prepare / --validate / --train")
     characters = find_character_dirs(set(args.characters) if args.characters else None)

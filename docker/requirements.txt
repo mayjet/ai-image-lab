@@ -1,11 +1,12 @@
-setuptools==80.9.0  # TensorBoard 2.18が利用するpkg_resourcesを含む最終系
-
+# Shared, model-independent runtime packages. Model frameworks belong in Dockerfiles.
+setuptools==80.9.0
+wheel
 jupyterlab
 notebook
 ipykernel
 ipywidgets
-
-numpy==1.26.4  # Jetson向けtorchはNumPy 1.x ABIでビルドされている
+tensorboard==2.18.0
+numpy==1.26.4
 pandas
 scipy
 scikit-learn
@@ -14,32 +15,13 @@ tqdm
 toml
 pyyaml
 requests
-
 Pillow
 opencv-python-headless
-
-transformers==4.44.0  # base の igpu torch は distributed 無効ビルドのため 4.44 系(sd-scripts 準拠)に固定
-diffusers[torch]==0.32.1
-accelerate==1.6.0
-huggingface-hub==0.34.3
-safetensors==0.4.5
+safetensors
 datasets
-peft
-tokenizers
 sentencepiece
 protobuf>=3.20.3,<6
-
 imagesize
 ftfy
 einops
-voluptuous
-tensorboard==2.18.0
 rich
-lion-pytorch
-schedulefree
-pytorch-optimizer
-prodigyopt
-prodigy-plus-schedule-free
-open-clip-torch
-
-controlnet_aux

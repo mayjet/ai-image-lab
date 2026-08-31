@@ -16,6 +16,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from shared.paths import default_dataset_root, sd15_output_root
+
 # Keep the command simple while preserving the Python 3.10/CUDA-isolated runtime.
 FACE_DETECT_PYTHON = Path("/opt/face-detector/bin/python")
 RUNTIME_MARKER = "ANIME_FACE_COLLECT_ISOLATED"
@@ -36,14 +42,13 @@ if os.environ.get(RUNTIME_MARKER) != "1":
 import toml
 from PIL import Image, ImageOps
 
-DATASET_ROOT = Path("./dataset")
+DATASET_ROOT = default_dataset_root()
 SOURCE_FOLDERS = ["anime", "game", "illust", "portrait"]
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 COMMON_CAPTION_FILE = "_common_caption.txt"
 
-WORK_DIR = Path("ai-image-lab-work")
-OUTPUT_DIR = WORK_DIR / "output" / "anime_face_collect"
-FACE_DETECT_SCRIPT = Path("/opt/face-detector/face_detect.py")
+OUTPUT_DIR = sd15_output_root() / "face_collect"
+FACE_DETECT_SCRIPT = Path("/opt/face-detector/dghs_runner.py")
 FACE_MODEL_LEVEL = "n"
 FACE_MODEL_VERSION = "v1.4"
 FACE_CONFIDENCE = 0.30
@@ -400,6 +405,8 @@ def collect_character(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset-root", type=Path, default=DATASET_ROOT)
+    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--characters", nargs="*", help="例: character-a。省略時は全キャラ")
     parser.add_argument("--rebuild", action="store_true", help="全入力画像を再判定")
     parser.add_argument(
@@ -411,7 +418,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    global DATASET_ROOT, OUTPUT_DIR
     args = parse_args()
+    DATASET_ROOT = args.dataset_root.expanduser().resolve()
+    OUTPUT_DIR = args.output_dir.expanduser().resolve()
     if args.check:
         detector_mode = select_detector_mode(args.device)
         print(f"[device] selected: {detector_mode}")

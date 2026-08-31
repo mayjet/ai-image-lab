@@ -1,7 +1,7 @@
 """学習済みキャラクターLoRAを同一条件で生成比較する。
 
-引数なしでは ./dataset の全キャラクター・全項目の最終重みを検証する。
-Jetsonでは docker/run_l4t.sh で起動したコンテナ内から実行する。
+引数なしでは datasets/works の全キャラクター・全項目の最終重みを検証する。
+Jetsonでは docker/run_l4t.sh sd15 で起動したコンテナ内から実行する。
 """
 
 from __future__ import annotations
@@ -20,13 +20,20 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from shared.paths import default_dataset_root, sd15_model_root, sd15_output_root
+
 try:
     import tomllib
 except ImportError:  # Python 3.10向けfallback（Jetson学習環境は3.12）
     import tomli as tomllib  # type: ignore[no-redef]
 
 
-DEFAULT_DATASET_ROOT = Path("./dataset")
+DEFAULT_DATASET_ROOT = default_dataset_root()
+DEFAULT_MODEL_ROOT = sd15_model_root()
 DEFAULT_MODEL_ID = "stablediffusionapi/counterfeit-v30"
 FOLDERS = ["lora", "portrait", "anime", "game", "illust", "face"]
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -40,6 +47,7 @@ STEP_PATTERN = re.compile(r"-step(\d+)$")
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
+    parser.add_argument("--model-root", type=Path, default=DEFAULT_MODEL_ROOT)
     parser.add_argument("--characters", nargs="*", help="省略時は全キャラクター")
     parser.add_argument("--folders", nargs="*", choices=FOLDERS, help="省略時は全項目")
     parser.add_argument("--scales", nargs="+", type=float, default=[0.6, 0.8, 1.0])
@@ -56,7 +64,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument(
         "--output-dir", type=Path,
-        default=Path("ai-image-lab-work/output/lora_validation"),
+        default=sd15_output_root() / "validation",
     )
     parser.add_argument("--run-name", help="省略時は実行日時")
     parser.add_argument("--dry-run", action="store_true", help="対象と生成件数だけ確認する")
@@ -139,14 +147,29 @@ def prompt_for(character_dir: Path, folder: str) -> str:
     return ", ".join(result)
 
 
-def weight_paths(character_dir: Path, folder: str, checkpoints: bool) -> list[Path]:
-    weight_dir = character_dir / "folder_loras"
-    final = weight_dir / f"{character_dir.name}-{folder}.safetensors"
+def weight_paths(
+    character_dir: Path,
+    folder: str,
+    checkpoints: bool,
+    model_root: Path,
+    dataset_name: str,
+) -> list[Path]:
+    weight_dir = model_root / dataset_name / character_dir.name
+    final = weight_dir / f"{folder}.safetensors"
     paths: list[Path] = []
     if checkpoints:
-        paths.extend(sorted(weight_dir.glob(f"{character_dir.name}-{folder}-step*.safetensors"), key=weight_step))
+        paths.extend(sorted((weight_dir / "checkpoints").glob(f"{folder}-step*.safetensors"), key=weight_step))
     if final.is_file():
         paths.append(final)
+    if paths:
+        return paths
+    # Transitional fallback for datasets that have not moved folder_loras yet.
+    legacy_dir = character_dir / "folder_loras"
+    legacy_final = legacy_dir / f"{character_dir.name}-{folder}.safetensors"
+    if checkpoints:
+        paths.extend(sorted(legacy_dir.glob(f"{character_dir.name}-{folder}-step*.safetensors"), key=weight_step))
+    if legacy_final.is_file():
+        paths.append(legacy_final)
     return paths
 
 
@@ -165,7 +188,9 @@ def build_jobs(args: argparse.Namespace, characters: dict[str, Path]) -> tuple[l
     jobs, missing = [], []
     for character, root in characters.items():
         for folder in folders:
-            weights = weight_paths(root, folder, args.checkpoints)
+            weights = weight_paths(
+                root, folder, args.checkpoints, args.model_root, args.dataset_root.name
+            )
             if not weights:
                 missing.append({"character": character, "folder": folder, "status": "missing_weight"})
                 continue

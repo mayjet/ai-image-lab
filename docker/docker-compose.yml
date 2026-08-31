@@ -1,27 +1,61 @@
+x-common: &common
+  volumes:
+    - ..:/workspace
+  working_dir: /workspace
+  ipc: host
+  ports:
+    - "${JUPYTER_PORT:-8888}:8888"
+    - "${TENSORBOARD_PORT:-6006}:6006"
+  environment:
+    HF_TOKEN: "${HF_TOKEN:-}"
+    ENABLE_TENSORBOARD: "${ENABLE_TENSORBOARD:-1}"
+    TENSORBOARD_PORT: "6006"
+  restart: unless-stopped
+
+x-cuda-gpu: &cuda-gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
 services:
-  ai-image-lab:
+  sd15-cuda:
+    <<: [*common, *cuda-gpu]
     build:
-      context: .
-      dockerfile: Dockerfile
-    image: ai-image-lab:cuda
-    container_name: ai-image-lab-cuda
-    ports:
-      - "${JUPYTER_PORT:-8888}:8888"
-    volumes:
-      - ..:/workspace
-    working_dir: /workspace
-    ipc: host
+      context: ..
+      dockerfile: docker/Dockerfile.sd15.cuda
+    image: ai-image-lab:sd15-cuda
+    container_name: ai-image-lab-sd15-cuda
     shm_size: "16gb"
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+
+  sd15-l4t:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sd15.l4t
+    image: ai-image-lab:sd15-l4t
+    container_name: ai-image-lab-sd15-l4t
+    runtime: nvidia
+    shm_size: "8gb"
+
+  flux2-cuda:
+    <<: [*common, *cuda-gpu]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flux2.cuda
+    image: ai-image-lab:flux2-cuda
+    container_name: ai-image-lab-flux2-cuda
+    shm_size: "16gb"
+
+  flux2-l4t:
+    <<: *common
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flux2.l4t
+    image: ai-image-lab:flux2-l4t
+    container_name: ai-image-lab-flux2-l4t
+    runtime: nvidia
+    shm_size: "8gb"

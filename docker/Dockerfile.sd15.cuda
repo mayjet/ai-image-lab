@@ -4,8 +4,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_NO_CACHE_DIR=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV HF_HOME=/workspace/ai-image-lab-work/.cache/huggingface
-ENV XDG_CACHE_HOME=/workspace/ai-image-lab-work/.cache
+ENV AI_IMAGE_BACKEND=sd15
+ENV AI_IMAGE_PLATFORM=cuda
+ENV HF_HOME=/workspace/cache/huggingface
+ENV XDG_CACHE_HOME=/workspace/cache
 
 WORKDIR /tmp/build
 
@@ -39,14 +41,24 @@ RUN uv pip install --system \
     xformers==0.0.28.post1 \
     bitsandbytes==0.43.3
 
-COPY requirements.txt /tmp/build/requirements.txt
+COPY docker/requirements.txt /tmp/build/requirements.txt
 RUN uv pip install --system -r /tmp/build/requirements.txt
 
-COPY entrypoint.sh /usr/local/bin/ai-image-lab-entrypoint
-RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint
+RUN uv pip install --system \
+    "transformers==4.44.0" \
+    "diffusers[torch]==0.32.1" \
+    "accelerate==1.6.0" \
+    "huggingface-hub==0.34.3" \
+    "safetensors==0.4.5" \
+    peft tokenizers voluptuous lion-pytorch schedulefree pytorch-optimizer \
+    prodigyopt prodigy-plus-schedule-free open-clip-torch controlnet_aux
+
+COPY docker/entrypoint.sh /usr/local/bin/ai-image-lab-entrypoint
+COPY docker/check_environment.sh /usr/local/bin/check-ai-image-environment
+RUN chmod +x /usr/local/bin/ai-image-lab-entrypoint /usr/local/bin/check-ai-image-environment
 
 WORKDIR /workspace
-EXPOSE 8888
+EXPOSE 8888 6006
 
 ENTRYPOINT ["/usr/local/bin/ai-image-lab-entrypoint"]
 CMD ["python3", "-m", "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=", "--NotebookApp.password="]

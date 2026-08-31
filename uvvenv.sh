@@ -87,11 +87,11 @@ uv pip install --python "$VENV_PYTHON" \
     open-clip-torch \
     controlnet_aux
 
-mkdir -p "$PROJECT_ROOT/ai-image-lab-work"
-if [[ ! -f "$PROJECT_ROOT/ai-image-lab-work/sd-scripts/train_network.py" ]]; then
+mkdir -p "$PROJECT_ROOT/cache" "$PROJECT_ROOT/models/sd15" "$PROJECT_ROOT/outputs/sd15" "$PROJECT_ROOT/vendor"
+if [[ ! -f "$PROJECT_ROOT/vendor/sd-scripts/train_network.py" ]]; then
     echo "kohya-ss/sd-scriptsを取得します..."
     git clone https://github.com/kohya-ss/sd-scripts.git \
-        "$PROJECT_ROOT/ai-image-lab-work/sd-scripts"
+        "$PROJECT_ROOT/vendor/sd-scripts"
 fi
 
 export PYTORCH_ENABLE_MPS_FALLBACK="${PYTORCH_ENABLE_MPS_FALLBACK:-1}"
@@ -120,7 +120,7 @@ print(f"MPS available: {hasattr(torch.backends, 'mps') and torch.backends.mps.is
 print(f"Diffusers: {diffusers.__version__}")
 print(f"Transformers: {transformers.__version__}")
 print(f"OpenCV: {cv2.__version__}")
-print("local_character_single dependencies: OK")
+print("sd15/generate_character.ipynb dependencies: OK")
 PY
 
 echo

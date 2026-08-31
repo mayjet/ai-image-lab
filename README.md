@@ -1,484 +1,244 @@
 # ai-image-lab
 
-ローカルのキャラクターデータセットからStable Diffusion 1.5用LoRAを準備・学習・検証し、
-OllamaのVLMで参照画像の解析と生成候補の選定を行うための環境です。
-
-データセット、学習済み重み、生成結果、個人用プロンプトはGitへ含めません。
+キャラクター画像データセットからLoRAを学習し、参照画像と指示を使って生成・検証する環境です。
+SD1.5ワークフローを維持しながら、FLUX.2 kleinの複数参照編集へ移行できる構成です。
 
 ## 目次
 
-- [全体構成](#overview)
-- [必要環境](#requirements)
-- [データセット](#dataset)
-- [ローカルPython環境](#local-python)
-- [Docker環境](#docker)
-  - [x86 CUDA](#docker-cuda)
-  - [Jetson / L4T](#docker-jetson)
-- [顔データの準備](#face-collection)
-- [LoRA学習](#lora-training)
-  - [Pythonスクリプト](#training-script)
-  - [Notebook](#training-notebook)
-- [学習済みLoRAの生成検証](#lora-validation)
-- [Ollama VLMとTailscale](#ollama-tailscale)
-- [プロンプト](#prompts)
-- [キャラクター画像の生成](#generation)
-- [出力先](#outputs)
-- [トラブルシューティング](#troubleshooting)
+- [構成](#構成)
+- [Docker](#docker)
+- [ローカルvenv](#ローカルvenv)
+- [データセット](#データセット)
+- [SD15](#sd15)
+- [FLUX2](#flux2)
+- [プロンプト](#プロンプト)
+- [OllamaとTailscale](#ollamaとtailscale)
+- [出力とモデル](#出力とモデル)
+- [Git管理](#git管理)
 
-<a id="overview"></a>
-## 全体構成
+## 構成
 
 ```text
-入力画像
-  ↓
-anime_face_collect.py  ─ 顔学習画像を抽出（Jetson環境）
-  ↓
-train_lora.py / local_lora_train.ipynb
-  ↓
-validate_lora.py       ─ LoRAなし・項目・強度を比較
-  ↓
-local_character_single.ipynb
-  ├─ Ollama VLMで参照画像と指示を解析
-  ├─ SD1.5 + LoRA + img2img
-  ├─ optional ControlNet / IP-Adapter
-  └─ VLMで候補を評価して最終画像を保存
+sd15/       SD1.5の学習・検証・生成
+flux2/      FLUX.2の学習・検証・生成（移行中）
+shared/     共通のパス・前処理・実行環境互換処理
+datasets/   作品単位の非公開データセット
+models/     学習済み重み
+outputs/    学習ログ・検証・生成結果
+cache/      Hugging Face・モデル固有キャッシュ
+vendor/     sd-scripts、IP-Adapter、FLUX.2公式コード
+prompts/    個人用プロンプト
+docker/     CUDA/L4T Docker環境
 ```
 
-主なファイル:
+`datasets/`、`models/`、`outputs/`、`cache/`、`vendor/`、個人用`prompts/`はGit管理外です。
 
-| ファイル | 用途 |
-|---|---|
-| `anime_face_collect.py` | 元画像から顔学習データを準備 |
-| `train_lora.py` | フォルダ単位のLoRA学習 |
-| `local_lora_train.ipynb` | データ確認、必要時の顔収集・学習、生成検証 |
-| `validate_lora.py` | 学習済みLoRAの一括生成比較 |
-| `local_character_single.ipynb` | VLMを使った1人キャラクター生成 |
-| `prompt.md` | 公開用プロンプトテンプレート |
-| `uvvenv.sh` | ローカルvenvとipykernelの構築 |
+`shared/`にはこのプロジェクトが管理するモデル非依存コードを置きます。`vendor/`は外部リポジトリと外部実装専用で、自作コードは置きません。Dockerイメージへ組み込む顔検出ランナーとJetson互換処理も、役割が分かるよう`shared/face_detection/`と`shared/compat/`に配置しています。
 
-<a id="requirements"></a>
-## 必要環境
+## Docker
 
-用途に応じていずれかを使います。
-
-- NVIDIA GPU搭載Linux: x86 CUDA Docker
-- Jetson: JetPack 6.x / L4T r36系を想定したDocker
-- Apple Siliconなどのローカル環境: uvで作る`.venv`（生成向け）
-- VLM: Ollamaで利用できるVision Language Model
-- リモートVLM接続: Tailscale
-
-学習スクリプトはCUDAを必要とします。Apple Silicon/MPS環境は主に
-`local_character_single.ipynb`による生成に使用します。
-
-<a id="dataset"></a>
-## データセット
-
-既定のルートは`./dataset`です。実データを直接置くか、symlinkを作ります。
+プロジェクトルートから、マシン別のスクリプトとバックエンドを指定して起動します。コンテナは前景で動作し、`Ctrl+C`で停止すると自動削除されます。
 
 ```bash
-ln -s /path/to/private-dataset ./dataset
+bash ./docker/run.sh sd15
+bash ./docker/run.sh flux2
 ```
 
-想定構成:
+Jetson/L4Tでは`run_l4t.sh`を使います。
+
+```bash
+bash ./docker/run_l4t.sh sd15
+bash ./docker/run_l4t.sh flux2
+```
+
+`run.sh`と`run_l4t.sh`はComposeを実行せず、`docker build`と前景の`docker run --rm -it`を直接実行します。Compose例はスクリプト内のコメントと`docker-compose.yml`にのみ残しています。
+
+Dockerのビルドコンテキストはリポジトリルートですが、`.dockerignore`により`docker/`と`shared/`以外は送信されません。非公開のデータセット、モデル、プロンプト、出力はイメージ構築へ含まれません。
+
+- Jupyter Lab: `http://localhost:8888/lab`
+- TensorBoard: `http://localhost:6006/`
+
+Dockerは次の4環境を分離します。
 
 ```text
-dataset/
-└── character-a/
-    ├── character.toml
-    ├── lora/
-    ├── portrait/
-    ├── anime/
-    ├── game/
-    ├── illust/
-    ├── face/
-    └── folder_loras/
+Dockerfile.sd15.cuda
+Dockerfile.sd15.l4t
+Dockerfile.flux2.cuda
+Dockerfile.flux2.l4t
 ```
 
-画像フォルダの項目は次の6種類です。
+FLUX.2 L4Tは環境構築・疎通確認専用です。Jetson上での推論やLoRA学習は成功条件に含めません。
 
-```text
-lora portrait anime game illust face
-```
+詳しくは [docker/README.md](docker/README.md) を参照してください。
 
-`character.toml`例:
+## ローカルvenv
 
-```toml
-schema_version = 1
-name = "Character A"
-folder = "character-a"
-unit = ""
-identity_tags = ["high school girl"]
-
-[folders]
-lora = []
-portrait = ["full body", "character reference"]
-anime = ["anime screenshot", "anime style"]
-game = ["game artwork"]
-illust = ["illustration"]
-face = ["face focus", "close-up"]
-```
-
-`dataset/`、`.safetensors`、生成画像は`.gitignore`で除外されます。
-
-<a id="local-python"></a>
-## ローカルPython環境
-
-Apple Silicon/MPSを含むローカル実行では、プロジェクトルートで次だけを実行します。
+Apple Siliconを含むローカル環境では、次のコマンドでSD1.5用venvとipykernelを構築します。
 
 ```bash
 bash ./uvvenv.sh
 ```
 
-このコマンドは以下を行います。
+Jupyter Labは自動起動しません。VS Codeなどから登録済みkernelを選択します。
 
-1. 必要ならuvを導入
-2. `.venv`をPython 3.11で作成または更新
-3. Notebook・生成・学習用依存を導入
-4. `sd-scripts`を`ai-image-lab-work/`へ取得
-5. ipykernelをユーザー環境へ登録
-6. PyTorch、MPS/CUDA、Diffusers等を診断
+## データセット
 
-VS Codeでは次を選択します。
+標準配置は次です。
 
 ```text
-Python interpreter: ./.venv/bin/python
-Notebook kernel: Python (ai-image-lab_venv)
+datasets/<works>/<character>/
+├── portrait/
+├── anime/
+├── game/
+├── face/
+├── illust/
+└── character.toml
 ```
 
-Jupyter Labの起動は必須ではありません。環境を完全に作り直す場合:
+`<works>`は作品を表すディレクトリ名です。作品ごとに画像の特性とユーザーが定義した分類があるため、コードは既存の分類フォルダを移動・改名・細分化しません。画風や見た目を追加分類する場合も、ユーザーが作品配下へ新しいフォルダを追加したうえで明示的に指定します。
+
+公開例と引数未指定時の既定値には`./datasets/works`を使用します。実データセットはCLIの`--dataset-root`またはNotebook冒頭で作品ディレクトリを指定します。
+
+SD1.5の`*_sd.npz`は再生成可能なlatentキャッシュなので、データセットには保存しません。
+
+## SD15
+
+本体は`sd15/`、共通前処理は`shared/`にあります。ルート直下にはPythonスクリプトとNotebookを置きません。
+
+### 顔画像収集
 
 ```bash
-RECREATE_VENV=1 bash ./uvvenv.sh
+python3 shared/anime_face_collect.py \
+  --dataset-root ./datasets/works
 ```
 
-<a id="docker"></a>
-## Docker環境
-
-コンテナはプロジェクトルートを`/workspace`へマウントします。詳細は
-[`docker/README.md`](docker/README.md)も参照してください。
-
-<a id="docker-cuda"></a>
-### x86 CUDA
+### LoRA学習
 
 ```bash
-bash ./docker/run.sh
+python3 sd15/train_lora.py \
+  --dataset-root ./datasets/works \
+  --train
 ```
 
-既定コンテナ名:
-
-```text
-ai-image-lab-cuda
-```
-
-Jupyterは`http://localhost:8888`で起動します。
-
-<a id="docker-jetson"></a>
-### Jetson / L4T
+キャラクター・項目を限定できます。
 
 ```bash
-bash ./docker/run_l4t.sh
-```
-
-既定コンテナ名とポート:
-
-```text
-container:   ai-image-lab-l4t
-Jupyter:     http://localhost:8888
-TensorBoard: http://localhost:6006
-```
-
-環境診断:
-
-```bash
-docker exec -it ai-image-lab-l4t check-l4t-environment
-```
-
-Hugging Face tokenが必要な場合:
-
-```bash
-HF_TOKEN="..." bash ./docker/run_l4t.sh
-```
-
-<a id="face-collection"></a>
-## 顔データの準備
-
-Jetsonでは顔検出依存を学習環境と分離したPython 3.10環境へ入れています。
-スクリプト自身が環境を切り替えます。
-
-環境確認:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 anime_face_collect.py --check
-```
-
-全キャラクター:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 anime_face_collect.py
-```
-
-キャラクター指定:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 anime_face_collect.py --characters character-a
-```
-
-既存判定を無視して再構築する場合は`--rebuild`を追加します。
-
-<a id="lora-training"></a>
-## LoRA学習
-
-ベースモデルは既定で`stablediffusionapi/counterfeit-v30`、解像度512、
-rank/alpha 32、FP16、CLIP skip 2です。
-
-<a id="training-script"></a>
-### Pythonスクリプト
-
-データ準備:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 train_lora.py --prepare
-```
-
-検証のみ:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 train_lora.py --validate
-```
-
-全キャラクター・全項目を学習:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 train_lora.py --train
-```
-
-対象指定:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 train_lora.py --train \
-  --characters character-a \
-  --folders lora anime face
-```
-
-同じデータ・設定の完成済み重みはfingerprintによりスキップされます。
-再学習は`--force`を追加します。
-
-<a id="training-notebook"></a>
-### Notebook
-
-`local_lora_train.ipynb`は以下を一続きで確認できます。
-
-1. 対象キャラクター・項目の指定
-2. 入力画像とcaptionのプレビュー
-3. 必要な場合だけ顔収集
-4. 学習済み重みが揃っていれば学習をスキップ
-5. 不足分を`train_lora.py`で学習
-6. `validate_lora.py`による生成比較
-
-冒頭の`DATASET_ROOT`、`TARGET_CHARACTERS`、`TARGET_FOLDERS`を設定して、
-登録済みkernelまたはDocker内kernelで上から実行します。
-
-<a id="lora-validation"></a>
-## 学習済みLoRAの生成検証
-
-対象確認だけ行う場合:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 validate_lora.py --dry-run
-```
-
-全キャラクター・全項目:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 validate_lora.py
-```
-
-対象と強度を指定:
-
-```bash
-docker exec -it -w /workspace ai-image-lab-l4t \
-  python3 validate_lora.py \
+python3 sd15/train_lora.py \
+  --dataset-root ./datasets/works \
   --characters character-a \
   --folders anime face \
-  --scales 0.8 0.9 1.0 \
-  --seeds 42 43 44
+  --train
 ```
 
-途中チェックポイントも比較する場合は`--checkpoints`を追加します。
-結果は画像、比較グリッド、JSON、CSVで保存されます。
-
-<a id="ollama-tailscale"></a>
-## Ollama VLMとTailscale
-
-Ollamaサーバー側でTailscaleへ参加し、Ollamaをtailnetから到達可能にします。
+### LoRA検証
 
 ```bash
-sudo systemctl enable --now tailscaled
-sudo tailscale up
+python3 sd15/validate_lora.py \
+  --dataset-root ./datasets/works
 ```
 
-Ollamaを全インターフェースで待ち受けさせ、VLMを準備します。
+Notebookは次の本体を直接開きます。
+
+```text
+sd15/train_lora.ipynb
+sd15/generate_character.ipynb
+```
+
+### Jupyter Labから実行
+
+Docker起動後に`http://localhost:8888/lab`を開き、ファイル一覧から`sd15/`へ入ってNotebookを開きます。コンテナではリポジトリが`/workspace`へマウントされ、Notebook冒頭が`.git`を基準に`/workspace`へ移動するため、`datasets/`、`models/`、`outputs/`の相対パスは維持されます。
+
+### VS Codeから実行
+
+VS Codeでリポジトリルートを開き、`sd15/`内のNotebookを直接開きます。ローカルvenvの場合は`bash ./uvvenv.sh`で登録したkernelを選択します。Dockerを使う場合はVS CodeのNotebookから既存Jupyter Serverとして`http://localhost:8888`へ接続し、`Python (sd15-cuda)`または`Python (sd15-l4t)`を選択します。どちらの場合もNotebookがプロジェクトルートを自動検出するため、開いたファイルの階層に依存しません。
+
+## FLUX2
+
+JetsonではDocker/CUDA/PyTorch/Diffusers/Jupyterの環境だけを先に用意します。
 
 ```bash
-OLLAMA_HOST=0.0.0.0:11434 ollama serve
+bash ./docker/run_l4t.sh flux2
 ```
 
-別のターミナル:
+詳しい手順は [flux2/README.md](flux2/README.md) にあります。後日のLoRA学習は
+x86 NVIDIA GPU上で `bash ./docker/run.sh flux2` を使い、対象モデルを
+`FLUX.2-klein-base-4B` とします。
 
-```bash
-ollama pull qwen2.5vl:7b
-```
+実装済みです。
 
-生成側マシンも同じtailnetへ参加し、確認します。
+- FLUX.2 klein 4Bによるテキスト生成
+- FLUX.2 klein Base 4BのキャラクターLoRA学習
+- 1枚の参照画像による編集
+- TensorBoardによるloss・学習率の記録
+- CLIとNotebookの低メモリ実行
 
-```bash
-tailscale ping ollama.tail1cadae.ts.net
-curl http://ollama.tail1cadae.ts.net:11434/api/tags
-```
+複数参照編集、参照画像ごとの役割指定、LoRAあり・なしの一括比較は未実装です。
 
-Notebook既定値:
+既存のSD1.5 LoRAはFLUX.2では使用できません。FLUX用LoRAは別途学習します。
 
-```python
-OLLAMA_BASE_URL = "http://ollama.tail1cadae.ts.net:11434"
-OLLAMA_MODEL = "qwen2.5vl:7b"
-```
-
-Docker内でMagicDNS名を解決できない場合は、OllamaサーバーのTailscale IPv4
-（`100.x.y.z`）を`OLLAMA_BASE_URL`へ直接指定してください。
-
-<a id="prompts"></a>
 ## プロンプト
 
-`prompt.md`は公開用テンプレートです。個人用ファイルは`prompts/`へコピーします。
+`prompt.md`は公開テンプレートです。個人用プロンプトは`prompts/`へ置きます。
 
 ```bash
 cp prompt.md prompts/my-prompt.md
 ```
 
-Notebook設定:
+個人用ファイルはGit管理されません。
 
-```python
-PROMPT_MD_PATH = Path("./prompts/my-prompt.md")
-```
+SD1.5ではnegative promptやLoRA強度を使用します。FLUX.2では複数画像の役割を明示し、negative promptではなく望む状態を肯定形で記述します。
 
-`prompts/.gitkeep`だけがGit管理され、その他の`prompts/`内ファイルは無視されます。
-
-プロンプトでは次を指定できます。
-
-- キャラクターフォルダ名
-- identity / pose / costume / style参照
-- positive / negative / rules
-- 使用するLoRAファイルと基本強度
-- 必要なら生成探索条件
-
-<a id="generation"></a>
-## キャラクター画像の生成
-
-`local_character_single.ipynb`をVS Code等で開き、使用環境のkernelを選択します。
-
-- ローカル: `Python (ai-image-lab_venv)`
-- Docker: `Python (ai-image-lab)`
-
-冒頭で主に次を確認します。
-
-```python
-DATASET_ROOT = Path("./dataset")
-PROMPT_MD_PATH = Path("./prompts/my-prompt.md")
-QUALITY_PRESET = "standard"
-EXECUTION_MODE = "auto"
-```
-
-処理順:
-
-1. プロンプトと参照画像を読み込む
-2. Ollama VLMが参照画像を分析してSD用タグと生成方針を作る
-3. 指定LoRAをDiffusersへロードする
-4. img2imgと必要に応じてControlNet/IP-Adapterで候補を生成する
-5. VLMが候補を比較して最良画像を選ぶ
-6. 必要な場合だけinpaint修復を行う
-7. `final.png`とmetadataを保存する
-
-32GB RAMのApple Silicon環境では`QUALITY_PRESET = "standard"`から開始できます。
-Jetsonでメモリ不足になる場合は、ControlNetとIP-Adapterを一度無効にし、
-64の倍数の小さい解像度から段階的に有効化してください。
-
-<a id="outputs"></a>
-## 出力先
-
-```text
-ai-image-lab-work/output/
-├── anime_face_collect/
-├── folder_lora_train/
-├── lora_validation/
-└── local_character_single/
-```
-
-生成Notebookの各runには概ね次が保存されます。
-
-```text
-final.png
-final_metadata.json
-candidates/
-candidate_plan.json
-verify_report.json
-specs/
-control/
-logs/
-```
-
-<a id="troubleshooting"></a>
-## トラブルシューティング
-
-### プロンプトが見つからない
-
-```python
-print(Path.cwd())
-print(PROMPT_MD_PATH.resolve())
-print(PROMPT_MD_PATH.is_file())
-```
-
-通常は`./prompts/...`です。`.prompts/...`ではありません。
-
-### ControlNetのtensorサイズが一致しない
-
-生成の幅と高さを64の倍数にします。例:
-
-```text
-384x512
-512x512
-640x832
-768x1024
-```
-
-サイズ変更後はinit/control画像の作成セルから再実行します。
-
-### JetsonのNvMap / CUDAメモリエラー
-
-Jupyter kernelを再起動し、次の順に負荷を下げます。
-
-1. IP-Adapterとinpaintを無効化
-2. ControlNetを無効化
-3. 解像度を下げる
-4. 候補数を減らす
-5. 必要なら`low_vram`を使う
-
-### Ollamaのホスト名をDocker内で解決できない
-
-ホスト側のTailscale接続を確認し、解決できなければTailscale IPv4を直接指定します。
-
-### 個人データがGitへ入っていないか確認する
+FLUX.2のCLIとNotebookも同じMarkdownを読みます。
 
 ```bash
-git status --ignored --short dataset prompts ai-image-lab-work
+python3 flux2/generate.py --prompt-md prompts/prompt1.md --no-lora --dry-run
 ```
 
-これらはignore表示になるのが正常です。`prompts/.gitkeep`だけは公開対象です。
+FLUX.2用の新規テンプレートは `flux2/prompt_template.md` です。
+
+## OllamaとTailscale
+
+SD1.5生成Notebookでは、Tailscale上のOllama VLMを使用できます。
+
+```text
+http://ollama.tail1cadae.ts.net:11434
+```
+
+VLMはプロンプト整理、参照画像確認、候補評価に使用します。生成モデルへ渡す参照画像をVLMのテキストだけに置き換えません。
+
+## 出力とモデル
+
+SD1.5モデルは次に保存されます。
+
+```text
+models/sd15/<works>/<character>/
+├── anime.safetensors
+├── anime.train.json
+├── face.safetensors
+├── face.train.json
+└── checkpoints/
+```
+
+出力はバックエンド別です。
+
+```text
+outputs/sd15/training/
+outputs/sd15/validation/
+outputs/sd15/generation/
+outputs/flux2/training/
+outputs/flux2/validation/
+outputs/flux2/generation/
+```
+
+TensorBoardログは各`training/logs/`へ保存されます。
+
+## Git管理
+
+公開前に次を確認します。
+
+```bash
+git status --short
+git status --ignored --short datasets models outputs cache vendor prompts
+```
+
+コード、Notebook、Docker設定、公開テンプレートだけが追跡対象です。データセット、学習重み、生成画像、キャッシュ、個人用プロンプトは追跡しません。
