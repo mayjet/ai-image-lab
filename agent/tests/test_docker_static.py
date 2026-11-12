@@ -103,6 +103,23 @@ def test_dockerfiles_set_private_tmpdir_only_after_creating_it():
         assert apt_index < create_index < tmpdir_index
 
 
+def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
+    """A failed remote build must leave the pasted-into terminal alive."""
+    readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")
+    section = readme.split("**公開リポジトリの場合:**", 1)[1]
+    block = section.split("```bash", 1)[1].split("```", 1)[0]
+    assert "set -euo pipefail" not in block
+
+    # Simulate a failing Docker command in a parent that already has errexit.
+    script = "set -e\ndocker() { return 42; }\n" + block + "\nprintf '__parent_alive__\\n'\n"
+    result = subprocess.run(
+        ["bash"], input=script, text=True, capture_output=True, timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Session exited with status 42; terminal remains open" in result.stdout
+    assert "__parent_alive__" in result.stdout
+
+
 def test_dockerfile_l4t_no_x86_torch():
     """L4T Dockerfile must not use --index-url download.pytorch.org wheel."""
     content = _read("Dockerfile.l4t")

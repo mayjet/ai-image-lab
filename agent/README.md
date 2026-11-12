@@ -137,63 +137,66 @@ docker compose -f agent/docker/compose.yml --profile l4t up --build
 **公開リポジトリの場合:**
 
 ```bash
-(
-set -euo pipefail
+run_image_agent_session() (
+    # This function runs in its own process. Do not enable errexit in the
+    # caller: a failed build must never close the interactive terminal.
+    REPO_URL="https://github.com/mayjet/ai-image-lab.git"
+    REPO_REF="main"
+    JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 
-# 公開リポジトリのmain最新版
-REPO_URL="https://github.com/mayjet/ai-image-lab.git"
-REPO_REF="main"
-JUPYTER_PORT="${JUPYTER_PORT:-8888}"
+    SESSION_ID="ia-$(date +%Y%m%d%H%M%S)-$(head -c4 /dev/urandom | xxd -p)"
+    IMAGE="${SESSION_ID}:local"
+    BUILDER="${SESSION_ID}-builder"
 
-# セッション固有の名前
-SESSION_ID="ia-$(date +%Y%m%d%H%M%S)-$(head -c4 /dev/urandom | xxd -p)"
-IMAGE="${SESSION_ID}:local"
-BUILDER="${SESSION_ID}-builder"
+    cleanup() {
+        echo "=== Cleanup ==="
+        docker stop "$SESSION_ID" 2>/dev/null || true
+        docker rm "$SESSION_ID" 2>/dev/null || true
+        docker rmi "$IMAGE" 2>/dev/null || true
+        docker buildx rm "$BUILDER" 2>/dev/null || true
+        echo "=== Done ==="
+    }
+    trap cleanup EXIT
 
-echo "=== Session: $SESSION_ID ==="
+    echo "=== Borrowed GPU launcher v2 (terminal-safe) ==="
+    echo "=== Session: $SESSION_ID ==="
 
-cleanup() {
-    echo "=== Cleanup ==="
-    docker stop "$SESSION_ID" 2>/dev/null || true
-    docker rm "$SESSION_ID" 2>/dev/null || true
-    docker rmi "$IMAGE" 2>/dev/null || true
-    docker buildx rm "$BUILDER" 2>/dev/null || true
-    echo "=== Done ==="
-}
-trap cleanup EXIT
+    docker buildx create --name "$BUILDER" --use || exit $?
 
-# 一時builderを作成
-docker buildx create --name "$BUILDER" --use
+    echo "=== Building from $REPO_URL @ $REPO_REF ==="
+    docker buildx build \
+      --builder "$BUILDER" \
+      --pull \
+      --no-cache \
+      --load \
+      --file agent/docker/Dockerfile.cuda \
+      --tag "$IMAGE" \
+      "${REPO_URL}#${REPO_REF}" || exit $?
 
-# Remote Git contextからビルド
-echo "=== Building from $REPO_URL @ $REPO_REF ==="
-docker buildx build \
-  --builder "$BUILDER" \
-  --pull \
-  --no-cache \
-  --load \
-  --file agent/docker/Dockerfile.cuda \
-  --tag "$IMAGE" \
-  "${REPO_URL}#${REPO_REF}"
+    echo "=== Starting container (Tailscale mode) ==="
+    echo "=== Open the Tailscale login URL shown below in your browser. ==="
 
-echo "=== Starting container (Tailscale mode) ==="
-echo "=== Open the Tailscale login URL shown below in your browser. ==="
-
-docker run --rm -it \
-  --name "$SESSION_ID" \
-  --gpus device=0 \
-  --cap-drop ALL \
-  --security-opt no-new-privileges \
-  --tmpfs /tmp:size=512m \
-  -p "127.0.0.1:${JUPYTER_PORT}:8888" \
-  -e ENABLE_TAILSCALE=1 \
-  -e TAILSCALE_TIMEOUT=300 \
-  -e TAILSCALE_VERSION=1.90.6 \
-  "$IMAGE"
-
-# trapによりcleanupが自動実行されます
+    docker run --rm -it \
+      --name "$SESSION_ID" \
+      --gpus device=0 \
+      --cap-drop ALL \
+      --security-opt no-new-privileges \
+      --tmpfs /tmp:size=512m \
+      -p "127.0.0.1:${JUPYTER_PORT}:8888" \
+      -e ENABLE_TAILSCALE=1 \
+      -e TAILSCALE_TIMEOUT=300 \
+      -e TAILSCALE_VERSION=1.90.6 \
+      "$IMAGE"
+    exit $?
 )
-SESSION_STATUS=$?
+
+# The conditional protects even a caller that already has `set -e` enabled.
+if run_image_agent_session; then
+    SESSION_STATUS=0
+else
+    SESSION_STATUS=$?
+fi
+unset -f run_image_agent_session
 echo "=== Session exited with status ${SESSION_STATUS}; terminal remains open ==="
 ```
 
