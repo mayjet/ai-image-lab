@@ -91,6 +91,18 @@ def test_dockerfiles_do_not_install_tailscale():
         assert "pkgs.tailscale.com" not in content
 
 
+def test_dockerfiles_set_private_tmpdir_only_after_creating_it():
+    """APT post-install scripts need a TMPDIR that already exists."""
+    tmpdir = "ENV TMPDIR=/workspace/agent/.runtime/cache/tmp"
+    runtime_dir = "/workspace/agent/.runtime/cache/tmp"
+    for filename in ("Dockerfile.cuda", "Dockerfile.l4t"):
+        content = _read(filename)
+        apt_index = content.index("apt-get update")
+        create_index = content.index(runtime_dir, apt_index)
+        tmpdir_index = content.index(tmpdir)
+        assert apt_index < create_index < tmpdir_index
+
+
 def test_dockerfile_l4t_no_x86_torch():
     """L4T Dockerfile must not use --index-url download.pytorch.org wheel."""
     content = _read("Dockerfile.l4t")

@@ -19,7 +19,6 @@ ENV TRANSFORMERS_CACHE=/workspace/agent/.runtime/cache/transformers
 ENV DIFFUSERS_CACHE=/workspace/agent/.runtime/cache/diffusers
 ENV TORCH_HOME=/workspace/agent/.runtime/cache/torch
 ENV XDG_CACHE_HOME=/workspace/agent/.runtime/cache/xdg
-ENV TMPDIR=/workspace/agent/.runtime/cache/tmp
 ENV REALESRGAN_CACHE=/workspace/agent/.runtime/models/realesrgan
 
 ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -87,6 +86,10 @@ RUN mkdir -p \
     /workspace/agent/.runtime/cache/tmp \
     /workspace/agent/.runtime/logs \
     /workspace/agent/.runtime/offload
+
+# Set the private temp path only after it exists.  Keeping this before apt would
+# break package post-install scripts such as ca-certificates, which call mktemp.
+ENV TMPDIR=/workspace/agent/.runtime/cache/tmp
 
 # --- Entrypoint and utilities ---
 COPY agent/docker/entrypoint.sh /usr/local/bin/image-agent-entrypoint
