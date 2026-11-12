@@ -1,0 +1,35 @@
+# Image Agent runtime configuration
+# Override values via environment variables or CLI arguments.
+
+orchestration:
+  max_graph_steps: 20
+  max_auxiliary_jobs: 3
+  max_generation_candidates: 2
+  max_generation_revisions: 2
+  max_plan_repairs: 1
+  max_upscale_attempts: 2
+  max_references_per_job: 4
+
+runtime:
+  compute_dtype: float16
+  allow_bfloat16: false
+  allow_fp8: false
+  allow_nvfp4: false
+  max_vram_gib: 7.5
+  min_free_ram_gib: 20
+  batch_size: 1
+
+paths:
+  workspace: /workspace
+  dataset_root: /workspace/dataset
+  runs_dir: /workspace/agent/runs
+  runtime_dir: /workspace/agent/.runtime
+  models_dir: /workspace/agent/.runtime/models
+  cache_dir: /workspace/agent/.runtime/cache
+  logs_dir: /workspace/agent/.runtime/logs
+  offload_dir: /workspace/agent/.runtime/offload
+
+logging:
+  format: jsonl
+  level: INFO
+  redact_secrets: true

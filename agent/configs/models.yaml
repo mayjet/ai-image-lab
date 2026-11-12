@@ -1,0 +1,56 @@
+# Model configuration
+# Note: revision pins are for reproducibility. Update after verifying on target hardware.
+
+planner_critic:
+  model_id: "Qwen/Qwen3-VL-4B-Instruct"
+  # Replace with a tested commit hash after the first connected-machine validation.
+  revision: "main"
+  license: "Apache-2.0"
+  quantization: "4bit"
+  compute_dtype: "float16"
+  max_new_tokens: 2048
+  max_image_side: 448
+  max_images: 4
+  timeout_seconds: 600
+
+flux2:
+  model_id: "black-forest-labs/FLUX.2-klein-4B"
+  # NOTE: revision unverified; pin after first successful run
+  revision: "main"
+  license: "Apache-2.0"
+  quantization: "bnb4"
+  # bnb4 components use Accelerate device_map with a 6500 MiB GPU ceiling.
+  offload: "auto"
+  guidance_scale: 1.0
+  max_sequence_length: 256
+  timeout_seconds: 1200
+  # Initial safe defaults for RTX 2080 (8 GB VRAM)
+  default_width: 512
+  default_height: 512
+  default_steps: 4
+  # Staged resolution increases (unverified on RTX 2080):
+  #   768x432, 432x768 — try if 512x512 succeeds
+
+flux3:
+  # EXPERIMENTAL — RTX 2080 compatibility unverified
+  model_id: "FLUX.3 Image Klein distilled"
+  license: "FLUX Kommunity License (differs from FLUX.2 Apache-2.0)"
+  # Required INT8 ConvRot checkpoint files:
+  #   flux3-image-klein-int8-convrot.safetensors
+  #   qwen3vl_4b_int8_convrot.safetensors
+  #   flux2-vae.safetensors
+  # Source: https://blackforestlabs.ai / BFL HuggingFace org (verify before use)
+  comfyui_port: 18188
+  timeout_seconds: 1800
+  verified_on_rtx2080: false
+  verified_on_jetson: false
+
+upscaler:
+  backend: "realesrgan"
+  anime_model: "RealESRGAN_x4plus_anime_6B"
+  general_model: "RealESRGAN_x4plus"
+  tile: 256
+  tile_padding: 16
+  fp16: true
+  face_enhance: false   # disabled: would change character identity
+  timeout_seconds: 600

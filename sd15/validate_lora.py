@@ -1,7 +1,7 @@
 """学習済みキャラクターLoRAを同一条件で生成比較する。
 
 引数なしでは datasets/works の全キャラクター・全項目の最終重みを検証する。
-Jetsonでは docker/run_l4t.sh sd15 で起動したコンテナ内から実行する。
+Jetsonでは sd15/docker/run.sh l4t で起動したコンテナ内から実行する。
 """
 
 from __future__ import annotations

@@ -1,0 +1,24 @@
+services:
+  flux2:
+    build:
+      context: ../..
+      dockerfile: flux2/docker/Dockerfile.cuda
+    image: ai-image-lab:flux2-cuda
+    volumes:
+      - ../..:/ai-image-lab
+    working_dir: /ai-image-lab/flux2
+    ipc: host
+    shm_size: 16gb
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+      - "${TENSORBOARD_PORT:-6006}:6006"
+    environment:
+      HF_TOKEN: "${HF_TOKEN:-}"
+      ENABLE_TENSORBOARD: "${ENABLE_TENSORBOARD:-1}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

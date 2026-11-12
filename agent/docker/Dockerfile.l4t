@@ -1,0 +1,88 @@
+# image-agent L4T / Jetson Dockerfile
+#
+# Target: Jetson (JetPack 6 / L4T r36) — aarch64
+# Scope: build, Jupyter, CUDA recognition, main imports.
+#        FLUX.2/3 inference on Jetson is NOT guaranteed (shared RAM constraints).
+#
+# Build args:
+#   L4T_PYTORCH_IMAGE  — NVIDIA L4T PyTorch image (default: JetPack 6 / igpu)
+# Tailscale is never installed in this image.
+
+ARG L4T_PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:24.12-py3-igpu
+FROM ${L4T_PYTORCH_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# --- Cache / runtime paths ---
+ENV HF_HOME=/workspace/agent/.runtime/cache/huggingface
+ENV TRANSFORMERS_CACHE=/workspace/agent/.runtime/cache/transformers
+ENV DIFFUSERS_CACHE=/workspace/agent/.runtime/cache/diffusers
+ENV TORCH_HOME=/workspace/agent/.runtime/cache/torch
+ENV XDG_CACHE_HOME=/workspace/agent/.runtime/cache/xdg
+ENV TMPDIR=/workspace/agent/.runtime/cache/tmp
+ENV REALESRGAN_CACHE=/workspace/agent/.runtime/models/realesrgan
+
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ENV JUPYTER_PORT=8888
+
+WORKDIR /tmp/build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git libgl1 libglib2.0-0 ffmpeg libsm6 libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --upgrade pip==25.1.1 setuptools==80.9.0 wheel==0.45.1 uv==0.7.13
+
+# DO NOT replace NVIDIA's L4T torch/torchvision with PyPI aarch64 wheels.
+# Install diffusers without the [torch] extra to avoid overwriting NVIDIA torch.
+RUN uv pip install --system --break-system-packages \
+    "diffusers>=0.37,<0.42" \
+    "transformers>=4.57,<6" \
+    "accelerate>=1.10,<2" \
+    "huggingface-hub>=0.36,<2"
+
+# bitsandbytes is x86 / CUDA-specific; skip on L4T
+# (4-bit quantization for Qwen not available without bitsandbytes on aarch64)
+
+COPY agent/docker/requirements.txt /tmp/build/requirements.txt
+RUN uv pip install --system --break-system-packages -r /tmp/build/requirements.txt
+
+# Jetson torch compat shim
+# NOTE: shared/compat is read-only reference; copy from agent/ equivalent below
+# (agent/ does not depend on shared/)
+
+# Smoke test
+RUN python3 -c "import torch, diffusers, transformers, pydantic; \
+    print('L4T imports ok, torch:', torch.__version__, \
+    'cuda:', torch.cuda.is_available())"
+
+# Install agent package
+COPY agent/ /workspace/agent/
+RUN uv pip install --system --break-system-packages -e /workspace/agent/
+
+# Runtime directories
+RUN mkdir -p \
+    /workspace/dataset \
+    /workspace/agent/runs \
+    /workspace/agent/.runtime/models \
+    /workspace/agent/.runtime/cache/huggingface \
+    /workspace/agent/.runtime/cache/transformers \
+    /workspace/agent/.runtime/cache/torch \
+    /workspace/agent/.runtime/cache/xdg \
+    /workspace/agent/.runtime/cache/tmp \
+    /workspace/agent/.runtime/logs \
+    /workspace/agent/.runtime/offload
+
+COPY agent/docker/entrypoint.sh /usr/local/bin/image-agent-entrypoint
+COPY agent/docker/check_environment.sh /usr/local/bin/check-image-agent-environment
+RUN chmod +x /usr/local/bin/image-agent-entrypoint \
+              /usr/local/bin/check-image-agent-environment
+
+WORKDIR /workspace
+EXPOSE 8888
+
+ENTRYPOINT ["/usr/local/bin/image-agent-entrypoint"]
+CMD ["jupyter"]

@@ -1,0 +1,9 @@
+*
+!flux2/
+flux2/*
+!flux2/docker/
+!flux2/docker/**
+!shared/
+shared/*
+!shared/compat/
+!shared/compat/**

@@ -1,92 +1,74 @@
 # ai-image-lab
 
-キャラクター画像データセットからLoRAを学習し、参照画像と指示を使って生成・検証する環境です。
-SD1.5ワークフローを維持しながら、FLUX.2 kleinの複数参照編集へ移行できる構成です。
+ローカルGPUで画像生成・検証を行うためのリポジトリです。SD1.5/FLUX.2のLoRAワークフローに加え、
+Qwen3-VLとFLUX.2を使うLoRAなしの画像生成エージェントを収録しています。
 
-## 目次
-
-- [構成](#構成)
-- [Docker](#docker)
-- [ローカルvenv](#ローカルvenv)
-- [データセット](#データセット)
-- [SD15](#sd15)
-- [FLUX2](#flux2)
-- [プロンプト](#プロンプト)
-- [OllamaとTailscale](#ollamaとtailscale)
-- [出力とモデル](#出力とモデル)
-- [Git管理](#git管理)
+```bash
+git clone https://github.com/mayjet/ai-image-lab.git
+cd ai-image-lab
+```
 
 ## 構成
 
 ```text
-sd15/       SD1.5の学習・検証・生成
-flux2/      FLUX.2の学習・検証・生成（移行中）
-shared/     共通のパス・前処理・実行環境互換処理
-datasets/   作品単位の非公開データセット
-models/     学習済み重み
-outputs/    学習ログ・検証・生成結果
-cache/      Hugging Face・モデル固有キャッシュ
-vendor/     sd-scripts、IP-Adapter、FLUX.2公式コード
-prompts/    個人用プロンプト
-docker/     CUDA/L4T Docker環境
+datasets/                 非公開の共有データセット
+loras/                    非公開の学習済みLoRA
+sd15/
+  docker/                 SD1.5専用CUDA/L4T環境
+  *.ipynb                 SD1.5 Notebook（起動直後に開ける直下配置）
+  prompts/                SD1.5個人用プロンプト
+  models/base/            再取得可能なベースモデル
+  cache/ outputs/ vendor/ SD1.5専用ランタイム領域
+flux2/
+  docker/                 FLUX.2専用CUDA/L4T環境
+  *.ipynb                 FLUX.2 Notebook（起動直後に開ける直下配置）
+  prompts/                FLUX.2個人用プロンプト
+  models/base/            再取得可能なベースモデル
+  cache/ outputs/ vendor/ FLUX.2専用ランタイム領域
+agent/
+  image_agent.ipynb       Qwen3-VL + FLUX.2画像生成エージェント
+  docker/                 使い捨てCUDA/L4T環境
+  src/ tests/ configs/    実装、テスト、モデル・生成設定
+shared/                   真にモデル非依存なパス・互換処理
 ```
 
-`datasets/`、`models/`、`outputs/`、`cache/`、`vendor/`、個人用`prompts/`はGit管理外です。
-
-`shared/`にはこのプロジェクトが管理するモデル非依存コードを置きます。`vendor/`は外部リポジトリと外部実装専用で、自作コードは置きません。Dockerイメージへ組み込む顔検出ランナーとJetson互換処理も、役割が分かるよう`shared/face_detection/`と`shared/compat/`に配置しています。
+`datasets/`の既存構造は変更しません。`datasets/`、`loras/`、各バックエンドの
+`models/`、`cache/`、`outputs/`、`vendor/`、`prompts/`はGit管理外です。
 
 ## Docker
 
-プロジェクトルートから、マシン別のスクリプトとバックエンドを指定して起動します。コンテナは前景で動作し、`Ctrl+C`で停止すると自動削除されます。
+Dockerはリポジトリ全体を`/ai-image-lab`へマウントします。SD1.5コンテナの
+作業ディレクトリは`/ai-image-lab/sd15`、FLUX.2は`/ai-image-lab/flux2`です。
+
+x86 NVIDIA CUDA:
 
 ```bash
-bash ./docker/run.sh sd15
-bash ./docker/run.sh flux2
+bash ./sd15/docker/run.sh cuda
+bash ./flux2/docker/run.sh cuda
 ```
 
-Jetson/L4Tでは`run_l4t.sh`を使います。
+Jetson / L4T:
 
 ```bash
-bash ./docker/run_l4t.sh sd15
-bash ./docker/run_l4t.sh flux2
+bash ./sd15/docker/run.sh l4t
+bash ./flux2/docker/run.sh l4t
 ```
 
-`run.sh`と`run_l4t.sh`はComposeを実行せず、`docker build`と前景の`docker run --rm -it`を直接実行します。Compose例はスクリプト内のコメントと`docker-compose.yml`にのみ残しています。
-
-Dockerのビルドコンテキストはリポジトリルートですが、`.dockerignore`により`docker/`と`shared/`以外は送信されません。非公開のデータセット、モデル、プロンプト、出力はイメージ構築へ含まれません。
+FLUX.2 L4Tは環境確認用で、LoRA学習はサポート対象外です。
 
 - Jupyter Lab: `http://localhost:8888/lab`
 - TensorBoard: `http://localhost:6006/`
 
-Dockerは次の4環境を分離します。
-
-```text
-Dockerfile.sd15.cuda
-Dockerfile.sd15.l4t
-Dockerfile.flux2.cuda
-Dockerfile.flux2.l4t
-```
-
-FLUX.2 L4Tは環境構築・疎通確認専用です。Jetson上での推論やLoRA学習は成功条件に含めません。
-
-詳しくは [docker/README.md](docker/README.md) を参照してください。
-
-## ローカルvenv
-
-Apple Siliconを含むローカル環境では、次のコマンドでSD1.5用venvとipykernelを構築します。
-
-```bash
-bash ./uvvenv.sh
-```
-
-Jupyter Labは自動起動しません。VS Codeなどから登録済みkernelを選択します。
+各Dockerfile専用の`.dockerignore`により、データセット、LoRA、モデル、出力、
+キャッシュはDocker build contextへ入りません。
 
 ## データセット
 
-標準配置は次です。
+共有データセットは次の構造を維持します。
 
 ```text
-datasets/<works>/<character>/
+datasets/<work>/<character>/
+├── lora/
 ├── portrait/
 ├── anime/
 ├── game/
@@ -95,142 +77,86 @@ datasets/<works>/<character>/
 └── character.toml
 ```
 
-`<works>`は作品を表すディレクトリ名です。作品ごとに画像の特性とユーザーが定義した分類があるため、コードは既存の分類フォルダを移動・改名・細分化しません。画風や見た目を追加分類する場合も、ユーザーが作品配下へ新しいフォルダを追加したうえで明示的に指定します。
+作品ディレクトリはコマンドの`--dataset-root`またはNotebook冒頭で明示します。
 
-公開例と引数未指定時の既定値には`./datasets/works`を使用します。実データセットはCLIの`--dataset-root`またはNotebook冒頭で作品ディレクトリを指定します。
+## SD1.5
 
-SD1.5の`*_sd.npz`は再生成可能なlatentキャッシュなので、データセットには保存しません。
-
-## SD15
-
-本体は`sd15/`、共通前処理は`shared/`にあります。ルート直下にはPythonスクリプトとNotebookを置きません。
-
-### 顔画像収集
+ローカルvenv:
 
 ```bash
-python3 shared/anime_face_collect.py \
-  --dataset-root ./datasets/works
+bash ./sd15/setup_local.sh
 ```
 
-### LoRA学習
+顔画像準備、学習、検証:
 
 ```bash
-python3 sd15/train_lora.py \
-  --dataset-root ./datasets/works \
-  --train
+python3 sd15/anime_face_collect.py --dataset-root ./datasets/<work>
+python3 sd15/train_lora.py --dataset-root ./datasets/<work> --train
+python3 sd15/validate_lora.py --dataset-root ./datasets/<work>
 ```
 
-キャラクター・項目を限定できます。
-
-```bash
-python3 sd15/train_lora.py \
-  --dataset-root ./datasets/works \
-  --characters character-a \
-  --folders anime face \
-  --train
-```
-
-### LoRA検証
-
-```bash
-python3 sd15/validate_lora.py \
-  --dataset-root ./datasets/works
-```
-
-Notebookは次の本体を直接開きます。
+Notebook:
 
 ```text
 sd15/train_lora.ipynb
 sd15/generate_character.ipynb
 ```
 
-### Jupyter Labから実行
+SD1.5 LoRAは`loras/sd15/<base-model>/<work>/<character>/`へ保存されます。
 
-Docker起動後に`http://localhost:8888/lab`を開き、ファイル一覧から`sd15/`へ入ってNotebookを開きます。コンテナではリポジトリが`/workspace`へマウントされ、Notebook冒頭が`.git`を基準に`/workspace`へ移動するため、`datasets/`、`models/`、`outputs/`の相対パスは維持されます。
+詳細は[`sd15/README.md`](sd15/README.md)を参照してください。
 
-### VS Codeから実行
-
-VS Codeでリポジトリルートを開き、`sd15/`内のNotebookを直接開きます。ローカルvenvの場合は`bash ./uvvenv.sh`で登録したkernelを選択します。Dockerを使う場合はVS CodeのNotebookから既存Jupyter Serverとして`http://localhost:8888`へ接続し、`Python (sd15-cuda)`または`Python (sd15-l4t)`を選択します。どちらの場合もNotebookがプロジェクトルートを自動検出するため、開いたファイルの階層に依存しません。
-
-## FLUX2
-
-JetsonではDocker/CUDA/PyTorch/Diffusers/Jupyterの環境だけを先に用意します。
+## FLUX.2
 
 ```bash
-bash ./docker/run_l4t.sh flux2
+bash ./flux2/docker/run.sh cuda
+python3 flux2/generate.py --prompt "A portrait" --dry-run
 ```
 
-詳しい手順は [flux2/README.md](flux2/README.md) にあります。後日のLoRA学習は
-x86 NVIDIA GPU上で `bash ./docker/run.sh flux2` を使い、対象モデルを
-`FLUX.2-klein-base-4B` とします。
+Notebook:
 
-実装済みです。
+```text
+flux2/train_lora.ipynb
+flux2/generate.ipynb
+```
 
-- FLUX.2 klein 4Bによるテキスト生成
-- FLUX.2 klein Base 4BのキャラクターLoRA学習
-- 1枚の参照画像による編集
-- TensorBoardによるloss・学習率の記録
-- CLIとNotebookの低メモリ実行
+FLUX.2 LoRAは`loras/flux2/black-forest-labs--flux.2-klein-base-4b/<run-name>/`へ保存されます。
 
-複数参照編集、参照画像ごとの役割指定、LoRAあり・なしの一括比較は未実装です。
+詳細は[`flux2/README.md`](flux2/README.md)を参照してください。
 
-既存のSD1.5 LoRAはFLUX.2では使用できません。FLUX用LoRAは別途学習します。
+## LoRAなし画像生成エージェント
 
-## プロンプト
-
-`prompt.md`は公開テンプレートです。個人用プロンプトは`prompts/`へ置きます。
+RTX 2080（VRAM 8GB）向けの実験的な省メモリ構成です。入力Markdownと参考画像を
+`./dataset/`へ置き、次を実行します。
 
 ```bash
-cp prompt.md prompts/my-prompt.md
+bash ./agent/docker/run.sh cuda
 ```
 
-個人用ファイルはGit管理されません。
+起動後は、ターミナルに表示されたURLから`agent/image_agent.ipynb`を開きます。
+通常起動ではTailscaleを使いません。clone禁止の借用GPUマシンで、コンテナだけを
+一時的にTailscaleへ参加させる手順は[`agent/README.md`](agent/README.md)を参照してください。
 
-SD1.5ではnegative promptやLoRA強度を使用します。FLUX.2では複数画像の役割を明示し、negative promptではなく望む状態を肯定形で記述します。
+Qwen3-VL、FLUX.2、Real-ESRGANを含むGPU実機経路は未検証です。既知の制約と
+検証状況も`agent/README.md`に記載しています。
 
-FLUX.2のCLIとNotebookも同じMarkdownを読みます。
+## プロンプトと出力
 
-```bash
-python3 flux2/generate.py --prompt-md prompts/prompt1.md --no-lora --dry-run
-```
-
-FLUX.2用の新規テンプレートは `flux2/prompt_template.md` です。
-
-## OllamaとTailscale
-
-SD1.5生成Notebookでは、Tailscale上のOllama VLMを使用できます。
+公開テンプレートと個人用ファイルをバックエンドごとに分離します。
 
 ```text
-http://ollama.tail1cadae.ts.net:11434
+sd15/prompt_template.md
+sd15/prompts/
+flux2/prompt_template.md
+flux2/prompts/
 ```
 
-VLMはプロンプト整理、参照画像確認、候補評価に使用します。生成モデルへ渡す参照画像をVLMのテキストだけに置き換えません。
-
-## 出力とモデル
-
-SD1.5モデルは次に保存されます。
+出力とTensorBoardログもバックエンド内に限定されます。
 
 ```text
-models/sd15/<works>/<character>/
-├── anime.safetensors
-├── anime.train.json
-├── face.safetensors
-├── face.train.json
-└── checkpoints/
+sd15/outputs/{training,validation,generation}/
+flux2/outputs/{training,validation,generation}/
 ```
-
-出力はバックエンド別です。
-
-```text
-outputs/sd15/training/
-outputs/sd15/validation/
-outputs/sd15/generation/
-outputs/flux2/training/
-outputs/flux2/validation/
-outputs/flux2/generation/
-```
-
-TensorBoardログは各`training/logs/`へ保存されます。
 
 ## Git管理
 
@@ -238,7 +164,9 @@ TensorBoardログは各`training/logs/`へ保存されます。
 
 ```bash
 git status --short
-git status --ignored --short datasets models outputs cache vendor prompts
+git status --ignored --short datasets loras \
+  sd15/cache sd15/models sd15/outputs sd15/vendor sd15/prompts \
+  flux2/cache flux2/models flux2/outputs flux2/vendor flux2/prompts
 ```
 
-コード、Notebook、Docker設定、公開テンプレートだけが追跡対象です。データセット、学習重み、生成画像、キャッシュ、個人用プロンプトは追跡しません。
+作品名、データセット、LoRA、生成画像、個人用プロンプトは公開Gitへ追加しません。

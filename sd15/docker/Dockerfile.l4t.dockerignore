@@ -1,0 +1,11 @@
+*
+!sd15/
+sd15/*
+!sd15/docker/
+!sd15/docker/**
+!sd15/face_detection/
+!sd15/face_detection/**
+!shared/
+shared/*
+!shared/compat/
+!shared/compat/**

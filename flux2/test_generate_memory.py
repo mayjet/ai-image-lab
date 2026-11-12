@@ -25,7 +25,7 @@ class MemoryPolicyTest(unittest.TestCase):
 
     def test_zero_references_does_not_touch_configured_paths(self):
         document = FluxMarkdownPrompt(
-            path=Path("prompt.md"),
+            path=Path("flux2/prompt_template.md"),
             settings={},
             references={"source_image": "missing.png"},
             lora={},

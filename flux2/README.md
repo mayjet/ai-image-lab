@@ -37,7 +37,7 @@ free -h
 ## 2. Jetson用イメージを構築・起動
 
 ```bash
-bash ./docker/run_l4t.sh flux2
+bash ./flux2/docker/run.sh l4t
 ```
 
 既定のベースは `nvcr.io/nvidia/pytorch:24.12-py3-igpu` です。JetPackに合わせて
@@ -45,7 +45,7 @@ bash ./docker/run_l4t.sh flux2
 
 ```bash
 L4T_PYTORCH_IMAGE='nvcr.io/nvidia/pytorch:<compatible-tag>-igpu' \
-  bash ./docker/run_l4t.sh flux2
+  bash ./flux2/docker/run.sh l4t
 ```
 
 起動後、別ターミナルで診断します。
@@ -71,7 +71,7 @@ Jupyter Labは `http://<JetsonのIP>:8888/lab` です。LAN外へ8888番を公�
 x86 NVIDIA GPU機では次を使います。
 
 ```bash
-HF_TOKEN='hf_...' bash ./docker/run.sh flux2
+HF_TOKEN='hf_...' bash ./flux2/docker/run.sh cuda
 ```
 
 モデルカード上でアクセス条件への同意が必要な場合は、同じHugging Face
@@ -81,7 +81,7 @@ DockerイメージやGitには保存されません。
 公式学習スクリプトはコンテナ起動時に次へ用意されます。
 
 ```text
-/workspace/vendor/diffusers/examples/dreambooth/
+/ai-image-lab/flux2/vendor/diffusers/examples/dreambooth/
   train_dreambooth_lora_flux2_klein.py
 ```
 
@@ -142,13 +142,13 @@ Notebookは `flux2/train_lora.ipynb` です。誤操作防止のため、学習�
 
 ## LoRA生成スクリプト
 
-生成指示は既存の `prompts/prompt1.md` 形式から読み込めます。現在の
+生成指示は既存の `flux2/prompts/prompt1.md` 形式から読み込めます。現在の
 `prompt1.md` はSD1.5 LoRAを指しているため、参照画像と指示だけ使う場合は
 `--no-lora` を付けます。
 
 ```bash
 python3 flux2/generate.py \
-  --prompt-md prompts/prompt1.md \
+  --prompt-md flux2/prompts/prompt1.md \
   --no-lora \
   --dry-run
 ```
@@ -157,7 +157,7 @@ python3 flux2/generate.py \
 
 ```bash
 python3 flux2/generate.py \
-  --prompt-md prompts/prompt1.md \
+  --prompt-md flux2/prompts/prompt1.md \
   --no-lora
 ```
 
@@ -166,7 +166,7 @@ FLUX.2 LoRAが完成したら、Markdownの `## lora` を次のように変更�
 ```text
 ## lora
 use_roles: base
-base: ./models/flux2/zk-char-flux2/pytorch_lora_weights.safetensors
+base: ./loras/flux2/black-forest-labs--flux.2-klein-base-4b/zk-char-flux2/pytorch_lora_weights.safetensors
 base_weight: 1.0
 ```
 
@@ -195,7 +195,7 @@ Markdownの各sectionは次のように処理されます。
 新規プロンプトは [prompt_template.md](prompt_template.md) をコピーして作成できます。
 
 ```bash
-cp flux2/prompt_template.md prompts/my-flux2-prompt.md
+cp flux2/prompt_template.md flux2/prompts/my-flux2-prompt.md
 ```
 
 Markdownを使わず、短い指示をCLIで直接渡す方法も残しています。
@@ -203,8 +203,8 @@ Markdownを使わず、短い指示をCLIで直接渡す方法も残していま
 ```bash
 python3 flux2/generate.py \
   --prompt 'ZK_CHAR, one anime girl, standing in a quiet street at sunset' \
-  --lora models/flux2/zk-char-flux2/pytorch_lora_weights.safetensors \
-  --output outputs/flux2/generation/zk-char.png
+  --lora loras/flux2/black-forest-labs--flux.2-klein-base-4b/zk-char-flux2/pytorch_lora_weights.safetensors \
+  --output flux2/outputs/generation/zk-char.png
 ```
 
 蒸留4Bの既定値は4 steps、guidance scale 1.0、512x512です。
@@ -215,7 +215,7 @@ python3 flux2/generate.py \
 
 ```bash
 python3 flux2/generate.py \
-  --prompt-md prompts/my-flux2-prompt.md \
+  --prompt-md flux2/prompts/my-flux2-prompt.md \
   --memory-mode auto \
   --quantization auto
 ```
@@ -281,7 +281,7 @@ flash/memory-efficient backendを使い、UNet向けattention slicingやxFormers
 python3 flux2/generate.py \
   --prompt 'change the character outfit to a blue jacket' \
   --input-image reference.png \
-  --lora models/flux2/zk-char-flux2/pytorch_lora_weights.safetensors \
+  --lora loras/flux2/black-forest-labs--flux.2-klein-base-4b/zk-char-flux2/pytorch_lora_weights.safetensors \
   --guidance-scale 4.0
 ```
 

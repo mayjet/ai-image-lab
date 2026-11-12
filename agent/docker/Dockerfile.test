@@ -1,0 +1,39 @@
+# Lightweight test image — no GPU required, no model downloads.
+# Used to run GPU-independent pytest suite quickly.
+# Runs on both x86 and arm64 (Jetson).
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates git libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --upgrade pip setuptools wheel
+
+# Install test dependencies (minimal — no torch, no diffusers)
+RUN pip install \
+    "pydantic==2.11.5" \
+    "pyyaml==6.0.2" \
+    "numpy==1.26.4" \
+    "pillow==11.2.1" \
+    "tqdm==4.67.1" \
+    "rich==14.0.0" \
+    "requests==2.32.3" \
+    "httpx==0.27.2" \
+    "langgraph==0.4.8" \
+    "pytest==8.3.5" \
+    "pytest-cov==6.1.0"
+
+# Install the agent package (no optional deps)
+COPY agent/ /workspace/agent/
+RUN pip install -e /workspace/agent/
+
+WORKDIR /workspace/agent
+CMD ["pytest", "tests/", "-v", "--tb=short", \
+     "--ignore=tests/test_docker_static.py"]

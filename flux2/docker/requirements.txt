@@ -1,0 +1,27 @@
+# Runtime packages shared by the FLUX.2 CUDA and L4T images.
+setuptools==80.9.0
+wheel
+jupyterlab
+notebook
+ipykernel
+ipywidgets
+tensorboard==2.18.0
+numpy==1.26.4
+pandas
+scipy
+scikit-learn
+matplotlib
+tqdm
+toml
+pyyaml
+requests
+Pillow
+opencv-python-headless
+safetensors
+datasets
+sentencepiece
+protobuf>=3.20.3,<6
+imagesize
+ftfy
+einops
+rich

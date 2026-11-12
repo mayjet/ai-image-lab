@@ -1,6 +1,6 @@
 # FLUX.2 generation prompt
 
-このファイルを `prompts/<name>.md` へコピーして編集する。
+このファイルを `flux2/prompts/<name>.md` へコピーして編集する。
 
 ## settings
 character: character-name
@@ -13,10 +13,10 @@ seed: 42
 memory_mode: auto
 quantization: auto
 # disk-offloadを選ぶ場合のみ使用。高速なSSD上を推奨。
-offload_dir: ./cache/flux2-offload
+offload_dir: ./flux2/cache/offload
 max_reference_images: 1
 reference_max_side: 512
-output: ./outputs/flux2/generation/character-name.png
+output: ./flux2/outputs/generation/character-name.png
 
 ## references
 source_image: ./datasets/works/character-name/portrait/source.png
@@ -28,7 +28,7 @@ style: ./datasets/works/character-name/illust
 ## lora
 # LoRAなしの場合はuse_rolesを空にする。
 use_roles: base
-base: ./models/flux2/character-name/pytorch_lora_weights.safetensors
+base: ./loras/flux2/black-forest-labs--flux.2-klein-base-4b/character-name/pytorch_lora_weights.safetensors
 base_weight: 1.0
 
 ## generation_preferences

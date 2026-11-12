@@ -1,0 +1,59 @@
+# image-agent Docker Compose (auxiliary path — primary path is run.sh)
+# Compose is provided for convenience; run.sh is the recommended entrypoint.
+#
+# Usage:
+#   docker compose -f agent/docker/compose.yml --profile cuda up --build
+#   docker compose -f agent/docker/compose.yml --profile l4t up --build
+
+services:
+  image-agent-cuda:
+    profiles: [cuda]
+    build:
+      context: ../..
+      dockerfile: agent/docker/Dockerfile.cuda
+      # No bind mounts or volumes: dataset must be uploaded via Jupyter
+    image: image-agent:cuda
+    container_name: image-agent-cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=512m
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
+    environment:
+      - JUPYTER_PORT=8888
+      - HF_TOKEN=${HF_TOKEN:-}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    command: jupyter
+
+  image-agent-l4t:
+    profiles: [l4t]
+    build:
+      context: ../..
+      dockerfile: agent/docker/Dockerfile.l4t
+      args:
+        L4T_PYTORCH_IMAGE: ${L4T_PYTORCH_IMAGE:-nvcr.io/nvidia/pytorch:24.12-py3-igpu}
+    image: image-agent:l4t
+    container_name: image-agent-l4t
+    runtime: nvidia
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=512m
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
+    environment:
+      - JUPYTER_PORT=8888
+      - HF_TOKEN=${HF_TOKEN:-}
+    command: jupyter

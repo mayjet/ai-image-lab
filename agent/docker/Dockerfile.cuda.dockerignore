@@ -1,0 +1,43 @@
+# Build context filter for Dockerfile.cuda
+# Only agent/ source files are needed.
+
+# Exclude everything by default
+*
+
+# Include agent/ source (excluding runtime state and private content)
+!agent/
+!agent/**
+agent/runs/
+agent/.runtime/
+agent/prompts/*
+
+# Exclude Git metadata
+.git/
+.gitignore
+
+# Exclude other backends
+flux2/
+sd15/
+shared/
+
+# Exclude user data and generated content
+dataset/
+datasets/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.pkl
+
+# Exclude cache and temp
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.log
+*.jsonl

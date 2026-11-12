@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -45,7 +46,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     prompt_source = parser.add_mutually_exclusive_group(required=True)
     prompt_source.add_argument("--prompt")
-    prompt_source.add_argument("--prompt-md", type=Path, help="prompts/prompt1.md形式のMarkdown")
+    prompt_source.add_argument("--prompt-md", type=Path, help="flux2/prompts/prompt1.md形式のMarkdown")
     parser.add_argument("--model-id", default=INFERENCE_MODEL_ID)
     parser.add_argument("--lora", help="ローカルsafetensors、フォルダ、またはHub ID")
     parser.add_argument("--no-lora", action="store_true", help="Markdown内のLoRA指定を無視する")
@@ -243,7 +244,7 @@ def resolve_configuration(
         args.offload_dir = (
             resolve_project_path(setting, PROJECT_ROOT)
             if setting
-            else PROJECT_ROOT / "cache" / "flux2-offload"
+            else BACKEND_ROOT / "cache" / "offload"
         )
     if args.reference_max_side is None:
         args.reference_max_side = setting_int(document, "reference_max_side", 512) if document else 512

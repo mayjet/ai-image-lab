@@ -1,0 +1,43 @@
+# Runtime packages for image-agent (CUDA and L4T)
+# Versions fixed for reproducibility.
+
+# Core
+setuptools==80.9.0
+wheel==0.45.1
+pip==25.1.1
+
+# Jupyter
+jupyterlab==4.4.3
+notebook==7.4.3
+ipykernel==6.29.5
+ipywidgets==8.1.5
+jupyter-server==2.15.0
+
+# Pydantic + data
+pydantic==2.11.5
+pyyaml==6.0.2
+numpy==1.26.4
+pillow==11.2.1
+tqdm==4.67.1
+rich==14.0.0
+requests==2.32.3
+httpx==0.27.2
+
+# LangGraph
+langgraph==0.4.8
+
+# Image generation deps (not installed in L4T torch layer)
+safetensors>=0.5,<1
+sentencepiece==0.2.0
+protobuf==5.29.4
+
+# Upscale (Real-ESRGAN deps)
+# basicsr and realesrgan installed separately to handle CUDA variant
+
+# Misc
+scipy==1.15.3
+imagesize==1.4.1
+ftfy==6.3.1
+einops==0.8.1
+opencv-python-headless==4.11.0.86
+psutil==7.0.0

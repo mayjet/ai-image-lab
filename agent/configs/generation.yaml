@@ -1,0 +1,40 @@
+# Generation defaults and staged profiles
+
+defaults:
+  backend: flux2
+  width: 512
+  height: 512
+  steps: 4
+  guidance_scale: 1.0
+  max_sequence_length: 256
+
+# Staged resolution profiles (try in order on RTX 2080)
+# NOTE: profiles above 512x512 are unverified on 8 GB VRAM
+profiles:
+  safe_512:
+    width: 512
+    height: 512
+    steps: 4
+    guidance_scale: 1.0
+
+  landscape_768:
+    width: 768
+    height: 432
+    steps: 4
+    guidance_scale: 1.0
+    # unverified on RTX 2080
+
+  portrait_768:
+    width: 432
+    height: 768
+    steps: 4
+    guidance_scale: 1.0
+    # unverified on RTX 2080
+
+upscale_targets:
+  - input: [768, 432]
+    output: [1920, 1080]
+  - input: [432, 768]
+    output: [1080, 1920]
+  - input: [512, 512]
+    output: [2048, 2048]

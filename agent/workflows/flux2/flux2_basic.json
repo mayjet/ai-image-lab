@@ -1,0 +1,15 @@
+{
+  "_note": "FLUX.2 Diffusers workflow is handled via Python API (not ComfyUI). This file is a parameter reference only.",
+  "_backend": "diffusers",
+  "model_id": "black-forest-labs/FLUX.2-klein-4B",
+  "quantization": "bnb4",
+  "offload": "sequential",
+  "default_width": 512,
+  "default_height": 512,
+  "default_steps": 4,
+  "guidance_scale": 1.0,
+  "max_sequence_length": 256,
+  "compute_dtype": "float16",
+  "_verified_on_rtx2080": false,
+  "_note2": "Update _verified_on_rtx2080 after first successful RTX 2080 run."
+}
