@@ -33,18 +33,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Python tooling ---
-RUN python3 -m pip install --upgrade pip==25.1.1 setuptools==80.9.0 wheel==0.45.1 uv==0.7.13
+RUN python3 -m pip install --break-system-packages --upgrade \
+    pip==25.1.1 setuptools==80.9.0 wheel==0.45.1 uv==0.7.13
 
 # --- PyTorch (CUDA 12.8 wheel; driver 595 supports this runtime) ---
 # BF16 / FP8 / NVFP4 are NOT enabled — RTX 2080 does not support them in hardware.
-RUN uv pip install --system \
+RUN uv pip install --system --break-system-packages \
     --index-url https://download.pytorch.org/whl/cu128 \
     "torch==2.9.1" \
     "torchvision==0.24.1" \
     "torchaudio==2.9.1"
 
 # --- Diffusers stack ---
-RUN uv pip install --system \
+RUN uv pip install --system --break-system-packages \
     "diffusers==0.42.1" \
     "transformers==5.1.0" \
     "accelerate>=1.10,<2" \
@@ -52,7 +53,7 @@ RUN uv pip install --system \
     "huggingface-hub>=1.32,<2"
 
 # --- Upscaler stack ---
-RUN uv pip install --system \
+RUN uv pip install --system --break-system-packages \
     "basicsr==1.4.2" \
     "realesrgan==0.3.0" \
     "facexlib==0.3.0" \
@@ -65,14 +66,14 @@ RUN find /usr/local/lib -path '*/basicsr/data/degradations.py' -exec sed -i \
 
 # --- Other runtime deps ---
 COPY agent/docker/requirements.txt /tmp/build/requirements.txt
-RUN uv pip install --system -r /tmp/build/requirements.txt
+RUN uv pip install --system --break-system-packages -r /tmp/build/requirements.txt
 
 # --- Smoke test: imports only (no GPU required at build time) ---
 RUN python3 -c "from transformers import Qwen3VLForConditionalGeneration; from diffusers import Flux2KleinPipeline; import torch, pydantic, langgraph; print('model imports ok')"
 
 # --- Install image-agent package ---
 COPY agent/ /workspace/agent/
-RUN uv pip install --system -e /workspace/agent/
+RUN uv pip install --system --break-system-packages -e /workspace/agent/
 
 # --- Runtime directories ---
 RUN mkdir -p \

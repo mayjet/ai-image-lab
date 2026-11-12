@@ -103,6 +103,21 @@ def test_dockerfiles_set_private_tmpdir_only_after_creating_it():
         assert apt_index < create_index < tmpdir_index
 
 
+def test_dockerfiles_explicitly_allow_system_python_installs():
+    """Ubuntu 24.04 marks its Python environment as externally managed."""
+    for filename in ("Dockerfile.cuda", "Dockerfile.l4t"):
+        content = _read(filename)
+        pip_lines = [
+            line for line in content.splitlines()
+            if "python3 -m pip install" in line
+        ]
+        assert pip_lines
+        assert all("--break-system-packages" in line for line in pip_lines)
+        assert content.count("uv pip install --system") == content.count(
+            "uv pip install --system --break-system-packages"
+        )
+
+
 def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
     """A failed remote build must leave the pasted-into terminal alive."""
     readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")
