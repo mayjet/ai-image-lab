@@ -136,6 +136,8 @@ bash ./agent/docker/run.sh cuda
 起動後は、ターミナルに表示されたURLから`agent/image_agent.ipynb`を開きます。
 通常起動ではTailscaleを使いません。clone禁止の借用GPUマシンで、コンテナだけを
 一時的にTailscaleへ参加させる手順は[`agent/README.md`](agent/README.md)を参照してください。
+借用GPU用のremote buildは固定commitではなく`main`を参照するため、実行時点の最新版が
+使用されます。
 
 Qwen3-VL、FLUX.2、Real-ESRGANを含むGPU実機経路は未検証です。既知の制約と
 検証状況も`agent/README.md`に記載しています。

@@ -129,20 +129,19 @@ docker compose -f agent/docker/compose.yml --profile l4t up --build
 
 以下のブロックをターミナルにそのまま貼り付けて実行してください。
 
-`COMMIT` は、remote buildで取得するリポジトリの版を固定する40文字のGit commit SHAです。
-`main`のような移動するブランチ名ではなくSHAを指定すると、後日も同じソースからbuildでき、
-意図しない更新の取り込みを防げます。下記は本エージェント実装を収録したcommitに固定して
-います。新しい実装を使う場合だけ、GitHubのcommit画面に表示される新しい完全SHAへ更新して
-ください。
+`REPO_REF` はremote buildで取得するGit refです。本リポジトリでは開発を`main`で継続する
+ため、下記は常に`main`の最新版をbuildします。同じコマンドでも実行時期によって内容が変わる
+点に注意してください。特定版を再現したい場合だけ、`REPO_REF`を40文字のcommit SHAへ一時的に
+変更できます。
 
 **公開リポジトリの場合:**
 
 ```bash
 set -euo pipefail
 
-# 公開リポジトリと検証済みソース版
+# 公開リポジトリのmain最新版
 REPO_URL="https://github.com/mayjet/ai-image-lab.git"
-COMMIT="6497cff5f94266f77ec0284f0151c592cb31e786"
+REPO_REF="main"
 JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 
 # セッション固有の名前
@@ -166,7 +165,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Remote Git contextからビルド
-echo "=== Building from $REPO_URL @ $COMMIT ==="
+echo "=== Building from $REPO_URL @ $REPO_REF ==="
 docker buildx build \
   --builder "$BUILDER" \
   --pull \
@@ -174,7 +173,7 @@ docker buildx build \
   --load \
   --file agent/docker/Dockerfile.cuda \
   --tag "$IMAGE" \
-  "${REPO_URL}#${COMMIT}"
+  "${REPO_URL}#${REPO_REF}"
 
 echo "=== Starting container (Tailscale mode) ==="
 echo "=== Open the Tailscale login URL shown below in your browser. ==="
