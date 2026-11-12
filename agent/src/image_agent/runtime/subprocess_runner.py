@@ -106,7 +106,8 @@ def run_subprocess(
     if not allow_failure and result.returncode != 0:
         raise SubprocessError(
             f"Subprocess {tag!r} exited with code {result.returncode}.\n"
-            f"stderr:\n{stderr[-4000:]}"
+            f"stdout:\n{result.stdout[-4000:]}\n"
+            f"stderr:\n{result.stderr[-4000:]}"
         )
 
     return result

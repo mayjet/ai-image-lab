@@ -103,6 +103,22 @@ def test_subprocess_failure_raises():
         )
 
 
+def test_subprocess_failure_reports_stdout_and_stderr():
+    with pytest.raises(SubprocessError) as exc_info:
+        run_subprocess(
+            [
+                "python3",
+                "-c",
+                "import sys; print('worker-json-error'); "
+                "print('loader-detail', file=sys.stderr); sys.exit(1)",
+            ],
+            log_tag="test_failure_output",
+        )
+    message = str(exc_info.value)
+    assert "worker-json-error" in message
+    assert "loader-detail" in message
+
+
 def test_subprocess_allow_failure():
     result = run_subprocess(
         ["python3", "-c", "import sys; sys.exit(1)"],

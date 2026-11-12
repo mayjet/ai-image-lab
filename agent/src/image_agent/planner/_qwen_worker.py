@@ -2,7 +2,8 @@
 Qwen inference worker — runs in a subprocess.
 
 stdin: path to a JSON payload file
-stdout: JSON {"status": "ok", "text": "..."} or {"status": "error", "error": "..."}
+stdout: JSON {"status": "ok", "text": "..."}
+stderr: JSON error details on failure
 
 This module is intentionally isolated from the parent package's schemas to keep
 the subprocess environment minimal.
@@ -218,7 +219,7 @@ def run_inference(payload: dict) -> str:
 def main() -> None:
     if len(sys.argv) < 2:
         result = {"status": "error", "error": "No payload path given"}
-        print(json.dumps(result))
+        print(json.dumps(result), file=sys.stderr)
         sys.exit(1)
 
     payload_path = sys.argv[1]
@@ -228,7 +229,18 @@ def main() -> None:
         text = run_inference(payload)
         print(json.dumps({"status": "ok", "text": text}))
     except Exception as exc:
-        print(json.dumps({"status": "error", "error": str(exc)}))
+        import traceback
+
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+            ),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
