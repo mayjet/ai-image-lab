@@ -129,14 +129,20 @@ docker compose -f agent/docker/compose.yml --profile l4t up --build
 
 以下のブロックをターミナルにそのまま貼り付けて実行してください。
 
+`COMMIT` は、remote buildで取得するリポジトリの版を固定する40文字のGit commit SHAです。
+`main`のような移動するブランチ名ではなくSHAを指定すると、後日も同じソースからbuildでき、
+意図しない更新の取り込みを防げます。下記は本エージェント実装を収録したcommitに固定して
+います。新しい実装を使う場合だけ、GitHubのcommit画面に表示される新しい完全SHAへ更新して
+ください。
+
 **公開リポジトリの場合:**
 
 ```bash
 set -euo pipefail
 
-# 設定（変更してください）
-REPO_URL="https://github.com/<owner>/<repo>.git"
-COMMIT="<固定commitハッシュ>"
+# 公開リポジトリと検証済みソース版
+REPO_URL="https://github.com/mayjet/ai-image-lab.git"
+COMMIT="6497cff5f94266f77ec0284f0151c592cb31e786"
 JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 
 # セッション固有の名前
