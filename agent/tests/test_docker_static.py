@@ -118,6 +118,18 @@ def test_dockerfiles_explicitly_allow_system_python_installs():
         )
 
 
+def test_dockerfiles_do_not_replace_distro_python_tooling():
+    """Debian-owned packages have no pip RECORD and cannot be uninstalled."""
+    requirements = _read("requirements.txt")
+    for package in ("pip==", "setuptools==", "wheel=="):
+        assert package not in requirements
+
+    for filename in ("Dockerfile.cuda", "Dockerfile.l4t"):
+        content = _read(filename)
+        assert "--no-deps uv==0.7.13" in content
+        assert "pip install --break-system-packages --upgrade" not in content
+
+
 def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
     """A failed remote build must leave the pasted-into terminal alive."""
     readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")

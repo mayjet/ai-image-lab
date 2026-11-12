@@ -33,8 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Python tooling ---
-RUN python3 -m pip install --break-system-packages --upgrade \
-    pip==25.1.1 setuptools==80.9.0 wheel==0.45.1 uv==0.7.13
+# Keep Ubuntu's pip/setuptools/wheel packages intact: Debian packages do not
+# carry pip RECORD files and therefore cannot be safely uninstalled by pip.
+RUN python3 -m pip install --break-system-packages --no-deps uv==0.7.13
 
 # --- PyTorch (CUDA 12.8 wheel; driver 595 supports this runtime) ---
 # BF16 / FP8 / NVFP4 are NOT enabled — RTX 2080 does not support them in hardware.

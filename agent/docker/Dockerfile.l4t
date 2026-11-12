@@ -33,8 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git libgl1 libglib2.0-0 ffmpeg libsm6 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip install --break-system-packages --upgrade \
-    pip==25.1.1 setuptools==80.9.0 wheel==0.45.1 uv==0.7.13
+# Do not replace distro-owned pip/setuptools/wheel packages (PEP 668 / missing
+# RECORD files).  Only uv itself is needed to install the runtime environment.
+RUN python3 -m pip install --break-system-packages --no-deps uv==0.7.13
 
 # DO NOT replace NVIDIA's L4T torch/torchvision with PyPI aarch64 wheels.
 # Install diffusers without the [torch] extra to avoid overwriting NVIDIA torch.
