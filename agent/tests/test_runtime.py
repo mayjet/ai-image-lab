@@ -119,6 +119,25 @@ def test_subprocess_failure_reports_stdout_and_stderr():
     assert "loader-detail" in message
 
 
+def test_subprocess_persists_complete_worker_logs(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("IMAGE_AGENT_LOG_DIR", str(tmp_path))
+    result = run_subprocess(
+        [
+            "python3",
+            "-c",
+            "import sys; print('complete-stdout'); print('complete-stderr', file=sys.stderr)",
+        ],
+        log_tag="qwen_worker",
+    )
+    assert result.returncode == 0
+    stdout_logs = list(tmp_path.glob("qwen_worker-*.stdout.log"))
+    stderr_logs = list(tmp_path.glob("qwen_worker-*.stderr.log"))
+    assert len(stdout_logs) == 1
+    assert len(stderr_logs) == 1
+    assert "complete-stdout" in stdout_logs[0].read_text(encoding="utf-8")
+    assert "complete-stderr" in stderr_logs[0].read_text(encoding="utf-8")
+
+
 def test_subprocess_allow_failure():
     result = run_subprocess(
         ["python3", "-c", "import sys; sys.exit(1)"],

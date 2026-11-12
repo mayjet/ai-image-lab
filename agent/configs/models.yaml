@@ -8,10 +8,14 @@ planner_critic:
   license: "Apache-2.0"
   quantization: "4bit"
   compute_dtype: "float16"
-  max_new_tokens: 2048
-  max_image_side: 448
+  max_new_tokens: 1536
+  max_image_side: 384
   max_images: 4
-  timeout_seconds: 600
+  # Leave about 1.5 GiB for CUDA context, vision activations, and KV cache.
+  gpu_max_memory_mib: 6200
+  # Keep 8 GiB free on the original 32 GiB target host.
+  cpu_max_memory_gib: 24
+  timeout_seconds: 1800
 
 flux2:
   model_id: "black-forest-labs/FLUX.2-klein-4B"
@@ -23,7 +27,7 @@ flux2:
   offload: "auto"
   guidance_scale: 1.0
   max_sequence_length: 256
-  timeout_seconds: 1200
+  timeout_seconds: 3600
   # Initial safe defaults for RTX 2080 (8 GB VRAM)
   default_width: 512
   default_height: 512

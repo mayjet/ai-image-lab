@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 # Default Qwen model (can be overridden via config)
 DEFAULT_QWEN_MODEL = "Qwen/Qwen3-VL-4B-Instruct"
-DEFAULT_QWEN_TIMEOUT = 600  # 10 minutes
+DEFAULT_QWEN_TIMEOUT = 1800  # 30 minutes, including first model download
 
 
 class QwenPlannerRunner:
@@ -64,6 +64,8 @@ class QwenPlannerRunner:
         self.max_new_tokens = max_new_tokens or int(model_cfg.get("max_new_tokens", 2048))
         self.max_image_side = max_image_side or int(model_cfg.get("max_image_side", 448))
         self.max_images = max_images or int(model_cfg.get("max_images", 4))
+        self.gpu_max_memory_mib = int(model_cfg.get("gpu_max_memory_mib", 6200))
+        self.cpu_max_memory_gib = int(model_cfg.get("cpu_max_memory_gib", 24))
 
     def run_planner(
         self,
@@ -89,6 +91,8 @@ class QwenPlannerRunner:
             "max_new_tokens": self.max_new_tokens,
             "max_image_side": self.max_image_side,
             "max_images": self.max_images,
+            "gpu_max_memory_mib": self.gpu_max_memory_mib,
+            "cpu_max_memory_gib": self.cpu_max_memory_gib,
             "markdown": markdown,
             "image_paths": list(image_paths),
             "asset_id_map": asset_id_map or {},
@@ -120,6 +124,8 @@ class QwenPlannerRunner:
             "max_new_tokens": 1024,
             "max_image_side": self.max_image_side,
             "max_images": self.max_images,
+            "gpu_max_memory_mib": self.gpu_max_memory_mib,
+            "cpu_max_memory_gib": self.cpu_max_memory_gib,
             "markdown": markdown,
             "reference_image_paths": list(reference_image_paths),
             "candidate_image_path": candidate_image_path,
@@ -143,6 +149,8 @@ class QwenPlannerRunner:
             env["TRANSFORMERS_CACHE"] = env.get(
                 "TRANSFORMERS_CACHE", "/workspace/agent/.runtime/cache/transformers"
             )
+            env["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+            env["TRANSFORMERS_VERBOSITY"] = "error"
             result = run_subprocess(
                 [sys.executable, worker_script, payload_path],
                 timeout=self.timeout,

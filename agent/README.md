@@ -125,45 +125,34 @@ docker compose -f agent/docker/compose.yml --profile l4t up --build
 - インターネット接続（GitHub + Tailscaleへの接続が必要）
 - Tailscaleアカウント（ブラウザでの認証が必要）
 
-### 一括コマンド（1回コピペで実行）
+### 既存containerを全削除して、detachedで再構築
 
-以下のブロックをターミナルにそのまま貼り付けて実行してください。
-
-`REPO_REF` はremote buildで取得するGit refです。本リポジトリでは開発を`main`で継続する
-ため、下記は常に`main`の最新版をbuildします。同じコマンドでも実行時期によって内容が変わる
-点に注意してください。特定版を再現したい場合だけ、`REPO_REF`を40文字のcommit SHAへ一時的に
-変更できます。
-
-**公開リポジトリの場合:**
+次のブロックは借用GPUホスト上の**全containerを強制削除**します。他用途のcontainerが
+存在しないことを `docker ps -a` で再確認してから、一度に貼り付けてください。remote Git
+contextの`main`最新版をbuildし、専用build cacheを削除した後、runtime containerを
+detached (`-d`) で起動します。ターミナルを閉じてもcontainerとJupyterは停止しません。
 
 ```bash
-run_image_agent_session() (
-    # This function runs in its own process. Do not enable errexit in the
-    # caller: a failed build must never close the interactive terminal.
+start_image_agent_borrowed() (
+    # Subshell内で失敗を処理し、呼出元の対話terminalを終了させない。
     REPO_URL="https://github.com/mayjet/ai-image-lab.git"
     REPO_REF="main"
+    IMAGE="image-agent-borrowed:latest"
+    CONTAINER="image-agent-borrowed"
+    BUILDER="image-agent-borrowed-builder"
     JUPYTER_PORT="${JUPYTER_PORT:-8888}"
+    TS_HOSTNAME="image-agent-$(date +%Y%m%d-%H%M%S)"
 
-    SESSION_ID="ia-$(date +%Y%m%d%H%M%S)-$(head -c4 /dev/urandom | xxd -p)"
-    IMAGE="${SESSION_ID}:local"
-    BUILDER="${SESSION_ID}-builder"
+    echo "=== WARNING: removing every Docker container on this host ==="
+    docker ps -a
+    docker ps -aq | xargs -r docker rm -f || return $?
 
-    cleanup() {
-        echo "=== Cleanup ==="
-        docker stop "$SESSION_ID" 2>/dev/null || true
-        docker rm "$SESSION_ID" 2>/dev/null || true
-        docker rmi "$IMAGE" 2>/dev/null || true
-        docker buildx rm "$BUILDER" 2>/dev/null || true
-        echo "=== Done ==="
-    }
-    trap cleanup EXIT
+    # このlauncher専用の以前のimage/builderだけを削除する。
+    docker buildx rm "$BUILDER" 2>/dev/null || true
+    docker image rm "$IMAGE" 2>/dev/null || true
+    docker buildx create --name "$BUILDER" --driver docker-container --use || return $?
 
-    echo "=== Borrowed GPU launcher v2 (terminal-safe) ==="
-    echo "=== Session: $SESSION_ID ==="
-
-    docker buildx create --name "$BUILDER" --use || exit $?
-
-    echo "=== Building from $REPO_URL @ $REPO_REF ==="
+    echo "=== Building $REPO_URL @ $REPO_REF ==="
     docker buildx build \
       --builder "$BUILDER" \
       --pull \
@@ -171,42 +160,119 @@ run_image_agent_session() (
       --load \
       --file agent/docker/Dockerfile.cuda \
       --tag "$IMAGE" \
-      "${REPO_URL}#${REPO_REF}" || exit $?
+      "${REPO_URL}#${REPO_REF}"
+    BUILD_STATUS=$?
+    if [[ "$BUILD_STATUS" -ne 0 ]]; then
+        docker buildx rm "$BUILDER" 2>/dev/null || true
+        return "$BUILD_STATUS"
+    fi
+    docker buildx rm "$BUILDER" 2>/dev/null || true
 
-    echo "=== Starting container (Tailscale mode) ==="
-    echo "=== Open the Tailscale login URL shown below in your browser. ==="
-
-    docker run --rm -it \
-      --name "$SESSION_ID" \
+    echo "=== Starting persistent detached container ==="
+    docker run -d \
+      --name "$CONTAINER" \
       --gpus device=0 \
+      --restart=no \
       --cap-drop ALL \
+      --cap-add SETUID \
+      --cap-add SETGID \
       --security-opt no-new-privileges \
-      --tmpfs /tmp:size=512m \
+      --tmpfs /tmp:size=1g \
+      --shm-size=1g \
       -p "127.0.0.1:${JUPYTER_PORT}:8888" \
       -e ENABLE_TAILSCALE=1 \
-      -e TAILSCALE_TIMEOUT=300 \
+      -e ENABLE_TAILSCALE_SSH=1 \
+      -e TAILSCALE_HOSTNAME="$TS_HOSTNAME" \
+      -e TAILSCALE_TIMEOUT=600 \
       -e TAILSCALE_VERSION=1.90.6 \
-      "$IMAGE"
-    exit $?
+      "$IMAGE" || return $?
+
+    echo "=== Container started: $CONTAINER ==="
+    echo "Run: docker logs -f $CONTAINER"
 )
 
-# The conditional protects even a caller that already has `set -e` enabled.
-if run_image_agent_session; then
-    SESSION_STATUS=0
+if start_image_agent_borrowed; then
+    START_STATUS=0
 else
-    SESSION_STATUS=$?
+    START_STATUS=$?
 fi
-unset -f run_image_agent_session
-echo "=== Session exited with status ${SESSION_STATUS}; terminal remains open ==="
+unset -f start_image_agent_borrowed
+echo "=== Launcher status: ${START_STATUS}; terminal remains open ==="
 ```
 
-Docker imageにはTailscaleを含めません。`ENABLE_TAILSCALE=1`のときだけ、公式static
-binaryをコンテナ内部の一時runtimeディレクトリへダウンロードして起動します。
-Auth keyは使わず、`tailscale up`が表示する対話ログインURLを使用します。バイナリ、
-state、ログはコンテナ削除と同時に消えます。固定検証する場合は`TAILSCALE_SHA256`も
-環境変数で渡してください。
+Docker image自体にはTailscaleを含めません。`ENABLE_TAILSCALE=1`のruntime containerだけが
+公式static binaryを一時ダウンロードします。Auth key、host側Tailscale、bind mount、Docker
+volumeは使用しません。`CAP_SETUID`と`CAP_SETGID`はTailscale SSHが接続ユーザーのprocessを
+開始するためだけに戻しています。`NET_ADMIN`およびTUN deviceは不要です。
 
-> **privateリポジトリの場合**: `REPO_URL` を `git+ssh://git@github.com/<owner>/<repo>` 形式にし、SSH agent forwardingを使用してください（`-e` フラグやBuild argにシークレットを入れないでください）。
+### Tailscale認証と起動確認
+
+```bash
+docker logs -f image-agent-borrowed
+```
+
+表示されたTailscaleログインURLをブラウザで開きます。認証後にJupyterが起動します。
+ログ追跡は `Ctrl-C` で終了して構いません。これは `docker attach` ではないため、containerや
+Jupyterは停止しません。接続情報は後から何度でも取得できます。
+
+```bash
+docker exec image-agent-borrowed cat /workspace/agent/.runtime/session-info.txt
+docker exec image-agent-borrowed check-image-agent-environment
+docker exec image-agent-borrowed nvidia-smi
+docker ps --filter name=image-agent-borrowed
+```
+
+`session-info.txt` の `JUPYTER_TAILSCALE_URL` をブラウザで開くか、表示された
+`JUPYTER_TOKEN`を使います。tokenをログやチャットへ貼り付けないでください。
+
+### Tailscale SSH / VS Code / Cursor
+
+接続元PCも同じtailnetへ参加させ、次を実行します。
+
+```bash
+ssh root@<session-info.txtのTAILSCALE_DNS>
+```
+
+Tailscaleの標準policyなら、自分が所有するnodeへの`root`接続はcheck modeで許可されます。
+policyを変更済みの場合は、port 22へのnetwork accessと、宛先nodeへ`root`で接続できるSSH
+ruleの両方が必要です。公開port 22、password、SSH key、container内`sshd`は不要です。
+
+VS Code/CursorのRemote SSH設定例:
+
+```sshconfig
+Host image-agent-borrowed
+    HostName <session-info.txtのTAILSCALE_DNS>
+    User root
+```
+
+Remote SSHで接続後は `/workspace` を開きます。Tailscale SSHはSFTPを提供するため、Remote
+SSHのファイル転送も使用できます。編集・download・model cache・VS Code serverはすべて
+container filesystem内に置かれ、container削除時に消えます。
+
+### 障害確認
+
+```bash
+# containerが終了した理由（OOMKilled=trueならhost kernelによるkill）
+docker inspect image-agent-borrowed \
+  --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}'
+
+# entrypoint / Tailscale / Jupyterログ
+docker logs --tail 300 image-agent-borrowed
+
+# Qwen/FLUX workerの完全なstderr（進捗で例外が欠落しない）
+docker exec image-agent-borrowed bash -lc \
+  'for f in $(ls -1t /workspace/agent/.runtime/logs/*.stderr.log 2>/dev/null | head -3); do echo "===== $f"; cat "$f"; done'
+
+# Tailscale接続状態
+docker exec image-agent-borrowed \
+  /workspace/agent/.runtime/tailscale/tailscale \
+  --socket=/tmp/tailscaled.sock status
+```
+
+SSHだけ拒否される場合はcontainerの再buildではなくtailnet policyを確認します。Jupyter URLが
+未生成なら、Tailscale認証待ちまたは600秒timeout後にcontainerが終了していないか
+`docker logs`と`docker inspect`を確認します。Qwen/FLUXの初回実行はmodel downloadを含むため、
+それぞれ30分/60分のtimeoutを設定しています。
 
 ### datasetの投入（借用GPUモード）
 
@@ -217,12 +283,18 @@ Tailscale認証後、JupyterのURLが表示されます。
 3. Markdownファイルと参考画像をアップロード
 4. `image_agent.ipynb` を開いて実行
 
-### 後片付け
+### 停止・後片付け
 
-コンテナを終了すると、trap により自動的に以下が削除されます:
-- runtime container
-- session image
-- buildx builder
+```bash
+docker rm -f image-agent-borrowed
+docker image rm image-agent-borrowed:latest
+docker buildx rm image-agent-borrowed-builder 2>/dev/null || true
+```
+
+container、model、dataset、生成物、Jupyter token、Tailscale binary/stateが削除されます。
+必要な生成物は削除前にSFTP/Jupyterで回収してください。Tailscale control plane上の一時node
+recordはhost filesystemではないため、このコマンドでは消えません。必要ならMachines画面から
+削除してください。
 
 ---
 

@@ -24,6 +24,8 @@ def _load_model_and_processor(
     quantization: str,
     compute_dtype: str,
     revision: str | None,
+    gpu_max_memory_mib: int,
+    cpu_max_memory_gib: int,
 ) -> tuple[Any, Any]:
     import torch
     from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
@@ -47,13 +49,21 @@ def _load_model_and_processor(
         )
         hf_kwargs["quantization_config"] = bnb_config
         hf_kwargs["device_map"] = "auto"
-        hf_kwargs["max_memory"] = {0: "7000MiB", "cpu": "24GiB"}
+        hf_kwargs["max_memory"] = {
+            0: f"{gpu_max_memory_mib}MiB",
+            "cpu": f"{cpu_max_memory_gib}GiB",
+        }
     else:
         hf_kwargs["device_map"] = "auto"
-        hf_kwargs["max_memory"] = {0: "7000MiB", "cpu": "24GiB"}
+        hf_kwargs["max_memory"] = {
+            0: f"{gpu_max_memory_mib}MiB",
+            "cpu": f"{cpu_max_memory_gib}GiB",
+        }
 
+    print("[qwen_worker] loading model", file=sys.stderr, flush=True)
     model = Qwen3VLForConditionalGeneration.from_pretrained(model_id, **hf_kwargs)
     model.eval()
+    print("[qwen_worker] loading processor", file=sys.stderr, flush=True)
     processor = AutoProcessor.from_pretrained(
         model_id, cache_dir=cache_dir, revision=revision
     )
@@ -84,8 +94,8 @@ def _prepare_messages_planner(
             aid = asset_id_map.get(img_path, f"ref_{i}")
             content.append({"type": "text", "text": f"[Reference image: {aid}]"})
             content.append({"type": "image", "image": img})
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[qwen_worker] warning: cannot load {img_path}: {exc}", file=sys.stderr)
 
     # Add Markdown text
     text_block = f"User request (Markdown):\n\n{markdown}"
@@ -121,8 +131,8 @@ def _prepare_messages_critic(
                 img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
             content.append({"type": "text", "text": f"[Reference image {i + 1}]"})
             content.append({"type": "image", "image": img})
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[qwen_worker] warning: cannot load {img_path}: {exc}", file=sys.stderr)
 
     try:
         cand = Image.open(candidate_image_path).convert("RGB")
@@ -132,8 +142,8 @@ def _prepare_messages_critic(
             cand = cand.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
         content.append({"type": "text", "text": "[Candidate image to evaluate]"})
         content.append({"type": "image", "image": cand})
-    except Exception:
-        pass
+    except Exception as exc:
+        raise ValueError(f"Cannot load candidate image {candidate_image_path}: {exc}") from exc
 
     text_block = (
         f"Original request:\n{markdown}\n\n"
@@ -161,9 +171,17 @@ def run_inference(payload: dict) -> str:
     max_images = payload.get("max_images", 4)
     mode = payload.get("mode", "planner")
     system_prompt = payload.get("system_prompt", "")
+    gpu_max_memory_mib = int(payload.get("gpu_max_memory_mib", 6200))
+    cpu_max_memory_gib = int(payload.get("cpu_max_memory_gib", 24))
 
     model, processor = _load_model_and_processor(
-        model_id, cache_dir, quantization, compute_dtype, revision
+        model_id,
+        cache_dir,
+        quantization,
+        compute_dtype,
+        revision,
+        gpu_max_memory_mib,
+        cpu_max_memory_gib,
     )
 
     if mode == "planner":
@@ -189,6 +207,7 @@ def run_inference(payload: dict) -> str:
             system_prompt=system_prompt,
         )
 
+    print("[qwen_worker] preprocessing inputs", file=sys.stderr, flush=True)
     inputs = processor.apply_chat_template(
         messages,
         tokenize=True,
@@ -197,8 +216,19 @@ def run_inference(payload: dict) -> str:
         return_tensors="pt",
     )
     inputs.pop("token_type_ids", None)
-    inputs = inputs.to(next(model.parameters()).device)
+    # With Accelerate device_map the first parameter may be CPU-offloaded. Move
+    # inputs to the first CUDA shard instead of guessing from parameter order.
+    input_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    for placement in getattr(model, "hf_device_map", {}).values():
+        if isinstance(placement, int):
+            input_device = torch.device(f"cuda:{placement}")
+            break
+        if isinstance(placement, str) and placement.startswith("cuda"):
+            input_device = torch.device(placement)
+            break
+    inputs = inputs.to(input_device)
 
+    print("[qwen_worker] generating plan", file=sys.stderr, flush=True)
     with torch.no_grad():
         outputs = model.generate(
             **inputs,

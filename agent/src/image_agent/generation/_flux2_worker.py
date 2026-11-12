@@ -46,7 +46,9 @@ def _load_pipeline(
 
     transformer = None
     text_encoder = None
-    max_memory = {0: "6500MiB", "cpu": "24GiB"}
+    # RTX 2080 SUPER exposes about 7786 MiB. Keep headroom for CUDA context,
+    # activations, VAE decode, and fragmentation; use host RAM for the rest.
+    max_memory = {0: "6200MiB", "cpu": "24GiB"}
 
     if quantization in ("bnb4", "4bit"):
         transformer_quant = DiffusersBitsAndBytesConfig(

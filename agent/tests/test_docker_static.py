@@ -147,7 +147,7 @@ def test_agent_uses_current_pytorch_allocator_variable():
 def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
     """A failed remote build must leave the pasted-into terminal alive."""
     readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")
-    section = readme.split("**公開リポジトリの場合:**", 1)[1]
+    section = readme.split("### 既存containerを全削除して、detachedで再構築", 1)[1]
     block = section.split("```bash", 1)[1].split("```", 1)[0]
     assert "set -euo pipefail" not in block
 
@@ -157,7 +157,7 @@ def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
         ["bash"], input=script, text=True, capture_output=True, timeout=10
     )
     assert result.returncode == 0, result.stderr
-    assert "Session exited with status 42; terminal remains open" in result.stdout
+    assert "Launcher status: 42; terminal remains open" in result.stdout
     assert "__parent_alive__" in result.stdout
 
 
@@ -186,7 +186,26 @@ def test_entrypoint_has_jupyter_token():
     content = _read("entrypoint.sh")
     assert "JUPYTER_TOKEN" in content
     # Must not start Jupyter without a token
-    assert "--ServerApp.token=" in content or "ServerApp.token" in content
+    assert "--IdentityProvider.token=" in content or "IdentityProvider.token" in content
+
+
+def test_borrowed_gpu_mode_is_detached_and_enables_tailscale_ssh():
+    readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")
+    section = readme.split("### 既存containerを全削除して、detachedで再構築", 1)[1]
+    block = section.split("```bash", 1)[1].split("```", 1)[0]
+    assert "docker run -d" in block
+    assert "--rm" not in block
+    assert "-e ENABLE_TAILSCALE_SSH=1" in block
+    assert "--cap-add SETUID" in block
+    assert "--cap-add SETGID" in block
+
+
+def test_entrypoint_tailscale_ssh_and_persistent_session_info():
+    content = _read("entrypoint.sh")
+    assert 'ENABLE_TAILSCALE_SSH' in content
+    assert 'tailscale_up_args+=(--ssh)' in content
+    assert 'session-info.txt' in content
+    assert 'TAILSCALE_SSH=' in content
 
 
 def test_entrypoint_no_tailscale_in_normal_mode():

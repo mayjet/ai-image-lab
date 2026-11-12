@@ -16,7 +16,9 @@ import os
 import signal
 import subprocess
 import sys
+from datetime import datetime, timezone
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence
 
 from image_agent.errors import SubprocessError
@@ -25,6 +27,23 @@ from image_agent.runtime.logging import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_TIMEOUT = 1800  # 30 minutes
+
+
+def _persist_worker_logs(tag: str, stdout: str, stderr: str) -> tuple[str, str]:
+    """Persist complete worker output inside the disposable runtime directory."""
+    log_dir = Path(os.environ.get("IMAGE_AGENT_LOG_DIR", "/workspace/agent/.runtime/logs"))
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        safe_tag = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in tag)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        prefix = log_dir / f"{safe_tag}-{stamp}-{os.getpid()}"
+        stdout_path = f"{prefix}.stdout.log"
+        stderr_path = f"{prefix}.stderr.log"
+        Path(stdout_path).write_text(stdout, encoding="utf-8", errors="replace")
+        Path(stderr_path).write_text(stderr, encoding="utf-8", errors="replace")
+        return stdout_path, stderr_path
+    except OSError:
+        return "", ""
 
 
 @dataclass
@@ -87,6 +106,12 @@ def run_subprocess(
         stderr=stderr or "",
         timed_out=timed_out,
     )
+    stdout_log, stderr_log = _persist_worker_logs(tag, result.stdout, result.stderr)
+    log_hint = (
+        f"\nFull logs: stdout={stdout_log}, stderr={stderr_log}"
+        if stdout_log and stderr_log
+        else ""
+    )
 
     logger.info(
         "subprocess_done",
@@ -100,14 +125,14 @@ def run_subprocess(
     if timed_out:
         raise SubprocessError(
             f"Subprocess {tag!r} timed out after {timeout}s.\n"
-            f"stderr:\n{stderr[-2000:]}"
+            f"stderr (last 8000 chars):\n{stderr[-8000:]}{log_hint}"
         )
 
     if not allow_failure and result.returncode != 0:
         raise SubprocessError(
             f"Subprocess {tag!r} exited with code {result.returncode}.\n"
-            f"stdout:\n{result.stdout[-4000:]}\n"
-            f"stderr:\n{result.stderr[-4000:]}"
+            f"stdout (last 8000 chars):\n{result.stdout[-8000:]}\n"
+            f"stderr (last 16000 chars):\n{result.stderr[-16000:]}{log_hint}"
         )
 
     return result

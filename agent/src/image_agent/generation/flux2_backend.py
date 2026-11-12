@@ -24,7 +24,7 @@ from image_agent.runtime.config import load_config
 logger = get_logger(__name__)
 
 DEFAULT_MODEL_ID = "black-forest-labs/FLUX.2-klein-4B"
-DEFAULT_TIMEOUT = 1200  # 20 minutes
+DEFAULT_TIMEOUT = 3600  # 60 minutes, including first model download
 
 
 class Flux2Backend(GenerationBackend):

@@ -91,10 +91,33 @@ fi
 # --- Tailscale (optional) ---
 echo ""
 echo "Tailscale:"
-if command -v tailscale &>/dev/null; then
-    check PASS "tailscale installed (borrowed GPU mode available)"
+runtime_tailscale=/workspace/agent/.runtime/tailscale/tailscale
+if [[ -x "$runtime_tailscale" ]]; then
+    check PASS "temporary runtime tailscale binary present"
+    if "$runtime_tailscale" --socket=/tmp/tailscaled.sock status >/dev/null 2>&1; then
+        check PASS "tailscaled is connected"
+    else
+        check WARN "tailscale binary exists but daemon is not connected"
+    fi
+    if [[ "${ENABLE_TAILSCALE_SSH:-0}" == "1" ]]; then
+        check PASS "Tailscale SSH requested for this container"
+    fi
 else
-    check PASS "tailscale not installed (normal mode — OK)"
+    check PASS "tailscale absent (normal mode — OK)"
+fi
+
+# --- Jupyter ---
+echo ""
+echo "Jupyter:"
+jupyter_check_token="${JUPYTER_TOKEN:-}"
+if [[ -z "$jupyter_check_token" && -r /workspace/agent/.runtime/session-info.txt ]]; then
+    jupyter_check_token="$(sed -n 's/^JUPYTER_TOKEN=//p' /workspace/agent/.runtime/session-info.txt | head -1)"
+fi
+if curl --fail --silent --max-time 3 \
+    "http://127.0.0.1:${JUPYTER_PORT:-8888}/api?token=${jupyter_check_token}" >/dev/null; then
+    check PASS "Jupyter HTTP endpoint responds"
+else
+    check WARN "Jupyter HTTP endpoint does not respond yet"
 fi
 
 # --- Summary ---

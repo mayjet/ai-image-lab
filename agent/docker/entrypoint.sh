@@ -17,8 +17,11 @@ RUNTIME_DIR="${RUNTIME_DIR:-/workspace/agent/.runtime}"
 LOG_DIR="$RUNTIME_DIR/logs"
 JUPYTER_PORT="${JUPYTER_PORT:-8888}"
 ENABLE_TAILSCALE="${ENABLE_TAILSCALE:-0}"
-TAILSCALE_TIMEOUT="${TAILSCALE_TIMEOUT:-120}"
+ENABLE_TAILSCALE_SSH="${ENABLE_TAILSCALE_SSH:-0}"
+TAILSCALE_TIMEOUT="${TAILSCALE_TIMEOUT:-600}"
 TAILSCALE_VERSION="${TAILSCALE_VERSION:-1.90.6}"
+TAILSCALE_HOSTNAME="${TAILSCALE_HOSTNAME:-image-agent}"
+SESSION_INFO="$RUNTIME_DIR/session-info.txt"
 
 mkdir -p \
     "$RUNTIME_DIR/models" \
@@ -95,10 +98,18 @@ if [[ "$ENABLE_TAILSCALE" == "1" ]]; then
     echo "[entrypoint] Running tailscale up — open the URL in your browser to authenticate:"
     echo "----------------------------------------------------------------------"
     # --timeout ensures we don't wait forever
-    if ! "$tailscale_bin" --socket=/tmp/tailscaled.sock up \
-        --timeout="${TAILSCALE_TIMEOUT}s" \
-        --accept-routes \
-        2>&1 | tee /dev/stderr; then
+    tailscale_up_args=(
+        --socket=/tmp/tailscaled.sock up
+        --timeout="${TAILSCALE_TIMEOUT}s"
+        --hostname="$TAILSCALE_HOSTNAME"
+        --accept-routes
+    )
+    if [[ "$ENABLE_TAILSCALE_SSH" == "1" ]]; then
+        # Tailscale SSH is provided by tailscaled itself. No sshd, host keys,
+        # host port 22, or bind mount is required.
+        tailscale_up_args+=(--ssh)
+    fi
+    if ! "$tailscale_bin" "${tailscale_up_args[@]}" 2>&1 | tee /dev/stderr; then
         echo "[entrypoint] ERROR: Tailscale authentication failed or timed out after ${TAILSCALE_TIMEOUT}s."
         kill "$tailscaled_pid" 2>/dev/null || true
         exit 1
@@ -123,6 +134,9 @@ if [[ "$ENABLE_TAILSCALE" == "1" ]]; then
     echo "  Tailscale ACTIVE"
     echo "  Jupyter URL (Tailscale): https://${TAILSCALE_URL}/lab/tree/agent/image_agent.ipynb?token=${JUPYTER_TOKEN}"
     echo "  Jupyter token: $JUPYTER_TOKEN"
+    if [[ "$ENABLE_TAILSCALE_SSH" == "1" ]]; then
+        echo "  Tailscale SSH: ssh root@${TAILSCALE_URL}"
+    fi
     echo "  Open: /workspace/agent/image_agent.ipynb"
     echo "========================================================================"
     tailscale_enabled=1
@@ -153,12 +167,27 @@ if [[ "$CMD" == "jupyter" ]]; then
         JUPYTER_BIND="0.0.0.0"
     fi
 
+    # Persist connection details inside the disposable container. This lets a
+    # detached launcher retrieve the URL/token without attaching to PID 1.
+    {
+        printf 'JUPYTER_TOKEN=%s\n' "$JUPYTER_TOKEN"
+        printf 'JUPYTER_LOCAL_URL=%s\n' "http://127.0.0.1:${JUPYTER_PORT}/lab/tree/agent/image_agent.ipynb?token=${JUPYTER_TOKEN}"
+        if [[ "$tailscale_enabled" == "1" ]]; then
+            printf 'TAILSCALE_DNS=%s\n' "$TAILSCALE_URL"
+            printf 'JUPYTER_TAILSCALE_URL=%s\n' "https://${TAILSCALE_URL}/lab/tree/agent/image_agent.ipynb?token=${JUPYTER_TOKEN}"
+            if [[ "$ENABLE_TAILSCALE_SSH" == "1" ]]; then
+                printf 'TAILSCALE_SSH=%s\n' "ssh root@${TAILSCALE_URL}"
+            fi
+        fi
+    } > "$SESSION_INFO"
+    chmod 600 "$SESSION_INFO"
+
     jupyter lab \
         --ip="$JUPYTER_BIND" \
         --port="$JUPYTER_PORT" \
         --no-browser \
         --allow-root \
-        --ServerApp.token="$JUPYTER_TOKEN" \
+        --IdentityProvider.token="$JUPYTER_TOKEN" \
         --ServerApp.password="" \
         --ServerApp.root_dir=/workspace \
         --ServerApp.default_url="/lab/tree/agent/image_agent.ipynb" \
