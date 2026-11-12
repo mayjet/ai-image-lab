@@ -267,12 +267,20 @@ docker exec image-agent-borrowed bash -lc \
 docker exec image-agent-borrowed \
   /workspace/agent/.runtime/tailscale/tailscale \
   --socket=/tmp/tailscaled.sock status
+
+# SSH広告状態（RunSSH=trueでcontainer側は有効）
+docker exec image-agent-borrowed tailscale set --ssh
+docker exec image-agent-borrowed tailscale debug prefs | grep -E '"RunSSH"|WantRunning'
 ```
 
 SSHだけ拒否される場合はcontainerの再buildではなくtailnet policyを確認します。Jupyter URLが
 未生成なら、Tailscale認証待ちまたは600秒timeout後にcontainerが終了していないか
 `docker logs`と`docker inspect`を確認します。Qwen/FLUXの初回実行はmodel downloadを含むため、
 それぞれ30分/60分のtimeoutを設定しています。
+
+`docker exec -it ... bash`で表示される`groups: cannot find name for group ID ...`は、host/NVIDIA
+runtimeから渡された補助group IDに対応する名前がcontainerの`/etc/group`に無いという警告です。
+Tailscale SSHの有効・無効とは関係ありません。
 
 ### datasetの投入（借用GPUモード）
 

@@ -75,7 +75,17 @@ install_runtime_tailscale() {
     tailscale_bin="$install_dir/tailscale"
     tailscaled_bin="$install_dir/tailscaled"
     export PATH="$install_dir:$PATH"
-    [[ -x "$tailscale_bin" && -x "$tailscaled_bin" ]]
+    [[ -x "$tailscale_bin" && -x "$tailscaled_bin" ]] || return 1
+
+    # docker exec starts with the image's original PATH and does not inherit
+    # this entrypoint's exported PATH. Install a runtime-only wrapper so an
+    # interactive shell can use `tailscale ...` and the non-default socket
+    # without knowing the temporary binary path. It vanishes with the container.
+    cat > /usr/local/bin/tailscale <<EOF
+#!/bin/sh
+exec "$tailscale_bin" --socket=/tmp/tailscaled.sock "\$@"
+EOF
+    chmod 0755 /usr/local/bin/tailscale
 }
 
 if [[ "$ENABLE_TAILSCALE" == "1" ]]; then
@@ -113,6 +123,14 @@ if [[ "$ENABLE_TAILSCALE" == "1" ]]; then
         echo "[entrypoint] ERROR: Tailscale authentication failed or timed out after ${TAILSCALE_TIMEOUT}s."
         kill "$tailscaled_pid" 2>/dev/null || true
         exit 1
+    fi
+    if [[ "$ENABLE_TAILSCALE_SSH" == "1" ]]; then
+        echo "[entrypoint] Verifying Tailscale SSH advertisement..."
+        if ! "$tailscale_bin" --socket=/tmp/tailscaled.sock set --ssh; then
+            echo "[entrypoint] ERROR: Tailscale connected, but SSH could not be enabled." >&2
+            kill "$tailscaled_pid" 2>/dev/null || true
+            exit 1
+        fi
     fi
     echo "----------------------------------------------------------------------"
 

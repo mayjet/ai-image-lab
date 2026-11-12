@@ -100,7 +100,12 @@ if [[ -x "$runtime_tailscale" ]]; then
         check WARN "tailscale binary exists but daemon is not connected"
     fi
     if [[ "${ENABLE_TAILSCALE_SSH:-0}" == "1" ]]; then
-        check PASS "Tailscale SSH requested for this container"
+        if "$runtime_tailscale" --socket=/tmp/tailscaled.sock debug prefs 2>/dev/null \
+            | grep -Eq '"RunSSH"[[:space:]]*:[[:space:]]*true'; then
+            check PASS "Tailscale SSH is enabled (RunSSH=true)"
+        else
+            check FAIL "Tailscale SSH requested but RunSSH is not true"
+        fi
     fi
 else
     check PASS "tailscale absent (normal mode — OK)"

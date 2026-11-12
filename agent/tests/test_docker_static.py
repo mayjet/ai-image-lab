@@ -204,6 +204,8 @@ def test_entrypoint_tailscale_ssh_and_persistent_session_info():
     content = _read("entrypoint.sh")
     assert 'ENABLE_TAILSCALE_SSH' in content
     assert 'tailscale_up_args+=(--ssh)' in content
+    assert 'set --ssh' in content
+    assert '/usr/local/bin/tailscale' in content
     assert 'session-info.txt' in content
     assert 'TAILSCALE_SSH=' in content
 
