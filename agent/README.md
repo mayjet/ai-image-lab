@@ -137,6 +137,7 @@ docker compose -f agent/docker/compose.yml --profile l4t up --build
 **公開リポジトリの場合:**
 
 ```bash
+(
 set -euo pipefail
 
 # 公開リポジトリのmain最新版
@@ -151,9 +152,6 @@ BUILDER="${SESSION_ID}-builder"
 
 echo "=== Session: $SESSION_ID ==="
 
-# 一時builderを作成
-docker buildx create --name "$BUILDER" --use
-
 cleanup() {
     echo "=== Cleanup ==="
     docker stop "$SESSION_ID" 2>/dev/null || true
@@ -162,7 +160,10 @@ cleanup() {
     docker buildx rm "$BUILDER" 2>/dev/null || true
     echo "=== Done ==="
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+
+# 一時builderを作成
+docker buildx create --name "$BUILDER" --use
 
 # Remote Git contextからビルド
 echo "=== Building from $REPO_URL @ $REPO_REF ==="
@@ -186,11 +187,14 @@ docker run --rm -it \
   --tmpfs /tmp:size=512m \
   -p "127.0.0.1:${JUPYTER_PORT}:8888" \
   -e ENABLE_TAILSCALE=1 \
-  -e TAILSCALE_TIMEOUT=120 \
+  -e TAILSCALE_TIMEOUT=300 \
   -e TAILSCALE_VERSION=1.90.6 \
   "$IMAGE"
 
 # trapによりcleanupが自動実行されます
+)
+SESSION_STATUS=$?
+echo "=== Session exited with status ${SESSION_STATUS}; terminal remains open ==="
 ```
 
 Docker imageにはTailscaleを含めません。`ENABLE_TAILSCALE=1`のときだけ、公式static
