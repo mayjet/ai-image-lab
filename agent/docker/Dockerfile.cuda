@@ -21,7 +21,7 @@ ENV TORCH_HOME=/workspace/agent/.runtime/cache/torch
 ENV XDG_CACHE_HOME=/workspace/agent/.runtime/cache/xdg
 ENV REALESRGAN_CACHE=/workspace/agent/.runtime/models/realesrgan
 
-ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+ENV PYTORCH_ALLOC_CONF=expandable_segments:True
 ENV JUPYTER_PORT=8888
 
 WORKDIR /tmp/build

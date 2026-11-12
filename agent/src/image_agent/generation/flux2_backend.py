@@ -98,7 +98,7 @@ class Flux2Backend(GenerationBackend):
             worker = str(Path(__file__).parent / "_flux2_worker.py")
             env = dict(os.environ)
             env["HF_HOME"] = env.get("HF_HOME", "/workspace/agent/.runtime/cache/huggingface")
-            env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+            env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
             result = run_subprocess(
                 [sys.executable, worker, payload_path],

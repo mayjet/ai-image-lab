@@ -130,6 +130,20 @@ def test_dockerfiles_do_not_replace_distro_python_tooling():
         assert "pip install --break-system-packages --upgrade" not in content
 
 
+def test_agent_uses_current_pytorch_allocator_variable():
+    """PyTorch 2.9 deprecates PYTORCH_CUDA_ALLOC_CONF."""
+    files = [
+        DOCKER_DIR / "Dockerfile.cuda",
+        DOCKER_DIR / "Dockerfile.l4t",
+        DOCKER_DIR / "compose.yml",
+        AGENT_DIR / "src/image_agent/generation/flux2_backend.py",
+        AGENT_DIR / "src/image_agent/generation/flux3_backend.py",
+    ]
+    contents = "\n".join(path.read_text(encoding="utf-8") for path in files)
+    assert "PYTORCH_CUDA_ALLOC_CONF" not in contents
+    assert "PYTORCH_ALLOC_CONF" in contents
+
+
 def test_borrowed_gpu_launcher_failure_does_not_exit_parent_shell():
     """A failed remote build must leave the pasted-into terminal alive."""
     readme = (AGENT_DIR / "README.md").read_text(encoding="utf-8")

@@ -32,7 +32,7 @@ services:
     environment:
       - JUPYTER_PORT=8888
       - HF_TOKEN=${HF_TOKEN:-}
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - PYTORCH_ALLOC_CONF=expandable_segments:True
     command: jupyter
 
   image-agent-l4t:

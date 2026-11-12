@@ -79,7 +79,7 @@ class Flux3Backend(GenerationBackend):
 
             worker = str(Path(__file__).parent / "_flux3_worker.py")
             env = dict(os.environ)
-            env["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+            env["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 
             result = run_subprocess(
                 [sys.executable, worker, payload_path],
